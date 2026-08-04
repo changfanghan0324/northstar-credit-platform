@@ -1,0 +1,105 @@
+version: 1.0.0
+authored_by: Codex
+source_contract: docs/methodology.md
+units: normalized integer minor units; displayed USD millions
+rounding: Excel ROUND and Decimal ROUND_HALF_UP both round half away from zero, including negative values; Python builtin round is prohibited; ratios display four decimals and exact covenant values remain separate
+formulas:
+  ebitda:
+    prompt_citation: "Master prompt §19 — EBITDA"
+    expression: "EBIT + D&A"
+    excel_template: "={ebit}+{depreciation_amortization}"
+  adjusted_ebitda:
+    prompt_citation: "Master prompt §16 and §19 — Adjusted EBITDA"
+    expression: "EBITDA + approved positive adjustments - approved negative adjustments"
+    excel_template: "={ebitda}+{positive_adjustments}-{negative_adjustments}"
+  free_cash_flow:
+    prompt_citation: "Master prompt §19 — Free Cash Flow"
+    expression: "CFO - Capex"
+    excel_template: "={cfo}-{capex}"
+  cfads:
+    prompt_citation: "Master prompt §19 — CFADS"
+    expression: "Adjusted EBITDA - cash taxes - maintenance capex - increase in OWC - mandatory pension - other mandatory uses"
+    excel_template: "={adjusted_ebitda}-{cash_taxes}-{maintenance_capex}-{increase_owc}-{mandatory_pension}-{other_mandatory_uses}"
+  annual_debt_service:
+    prompt_citation: "Master prompt §19 — Annual Debt Service"
+    expression: "Cash interest + scheduled principal + fixed charges not already deducted in CFADS"
+    excel_template: "={cash_interest}+{scheduled_principal}+{required_fixed_charges}"
+  gross_debt:
+    prompt_citation: "Master prompt §19 — Gross Debt"
+    expression: "Short-term borrowings + current maturities + long-term debt + finance leases + selected debt-like obligations"
+    excel_template: "=SUM({short_term_borrowings},{current_maturities},{long_term_debt},{finance_leases},{selected_debt_like})"
+  eligible_cash:
+    prompt_citation: "Master prompt §19 — Net Debt"
+    expression: "Unrestricted cash × availability factor"
+    excel_template: "={unrestricted_cash}*{cash_availability_factor}"
+  net_debt:
+    prompt_citation: "Master prompt §19 — Net Debt"
+    expression: "Gross Debt - eligible cash"
+    excel_template: "={gross_debt}-{eligible_cash}"
+  gross_debt_to_ebitda:
+    prompt_citation: "Master prompt §19 — Debt / EBITDA"
+    expression: "Gross Debt / Adjusted EBITDA"
+    excel_template: "=IF({adjusted_ebitda}<=0,NA(),ROUND({gross_debt}/{adjusted_ebitda},4))"
+  net_debt_to_ebitda:
+    prompt_citation: "Master prompt §19 — Net Debt / EBITDA"
+    expression: "Net Debt / Adjusted EBITDA"
+    excel_template: "=IF({adjusted_ebitda}<=0,NA(),ROUND({net_debt}/{adjusted_ebitda},4))"
+  interest_coverage:
+    prompt_citation: "Master prompt §19 — Interest Coverage"
+    expression: "Adjusted EBITDA / cash interest"
+    excel_template: "=IF({cash_interest}=0,NA(),ROUND({adjusted_ebitda}/{cash_interest},4))"
+  dscr:
+    prompt_citation: "Master prompt §19 — DSCR"
+    expression: "CFADS / annual debt service"
+    excel_template: "=IF({annual_debt_service}=0,NA(),ROUND({cfads}/{annual_debt_service},4))"
+  maximum_total_debt:
+    prompt_citation: "Master prompt §25 — Leverage capacity"
+    expression: "Maximum leverage × adjusted EBITDA, using the policy-declared debt measure"
+    excel_template: "={maximum_leverage}*{adjusted_ebitda}"
+  incremental_leverage_capacity_raw:
+    prompt_citation: "Master prompt §25 — Leverage capacity"
+    expression: "Maximum total debt - existing pro forma debt, excluding the proposed facility"
+    excel_template: "={maximum_total_debt}-{existing_proforma_debt}"
+  leverage_capacity:
+    prompt_citation: "Master prompt §25 — Leverage capacity"
+    expression: "Nonnegative incremental leverage capacity; raw negative headroom is preserved separately"
+    excel_template: "=MAX(0,{incremental_leverage_capacity_raw})"
+  maximum_annual_debt_service:
+    prompt_citation: "Master prompt §25 — DSCR capacity"
+    expression: "CFADS / minimum required DSCR"
+    excel_template: "={cfads}/{minimum_required_dscr}"
+  available_new_debt_service:
+    prompt_citation: "Master prompt §25 — DSCR capacity"
+    expression: "Maximum annual debt service - existing annual debt service"
+    excel_template: "=MAX(0,{maximum_annual_debt_service}-{existing_annual_debt_service})"
+  periodic_payment:
+    prompt_citation: "Master prompt §25 — amortizing debt exact payment mechanics"
+    expression: "Available annual new debt service / payments per year"
+    excel_template: "={available_new_debt_service}/{payments_per_year}"
+  annuity_capacity:
+    prompt_citation: "Master prompt §25 — amortizing debt exact payment mechanics"
+    expression: "Periodic payment × (1-(1+r)^-n)/r; payment × n when r=0"
+    excel_template: "=IF({periodic_rate}=0,{periodic_payment}*{payment_count},PV({periodic_rate},{payment_count},-{periodic_payment},0,0))"
+  dscr_capacity:
+    prompt_citation: "Master prompt §25 — DSCR capacity"
+    expression: "Present value of available new periodic debt service"
+    excel_template: "={annuity_capacity}"
+  recommended_loan:
+    prompt_citation: "Master prompt §25 — Final recommendation"
+    expression: "Minimum of request, leverage, DSCR, collateral, policy capacities"
+    excel_template: "=MAX(0,MIN({requested_amount},{leverage_capacity},{dscr_capacity},{collateral_capacity},{policy_capacity}))"
+reason_code_contract:
+  prompt_citation: "Master prompt §19, §22, §25"
+  guarded_metrics:
+    - gross_debt_to_ebitda
+    - interest_coverage
+    - existing_dscr
+    - proforma_dscr
+  required_states:
+    - nm_no_cash_interest
+    - nm_no_obligation
+    - nm_deferred_obligation
+    - nm_negative_base
+    - nm_undefined
+    - missing_input
+    - error_invalid_input

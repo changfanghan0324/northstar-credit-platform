@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+is_supported_python() {
+    "$1" -c 'import sys; raise SystemExit(sys.version_info < (3, 12))' >/dev/null 2>&1
+}
+
+if [ -n "${PYTHON_BIN:-}" ]; then
+    python_bin=$PYTHON_BIN
+else
+    python_bin=""
+    for candidate in \
+        "$project_root/.venv/bin/python" \
+        "$project_root/.venv-rebuilt/bin/python" \
+        python3.14 python3.13 python3.12 python3
+    do
+        if command -v "$candidate" >/dev/null 2>&1 && is_supported_python "$candidate"; then
+            python_bin=$candidate
+            break
+        fi
+    done
+fi
+
+if [ -z "$python_bin" ] || ! is_supported_python "$python_bin"; then
+    echo "verify requires Python 3.12 or newer; set PYTHON_BIN to a compatible interpreter" >&2
+    exit 2
+fi
+
+cd "$project_root"
+
+"$python_bin" -m ruff check packages/credit_engine/credit_engine tests
+"$python_bin" -m ruff format --check packages/credit_engine/credit_engine tests
+"$python_bin" -m mypy packages/credit_engine/credit_engine
+"$python_bin" -m pytest --cov=credit_engine --cov-report=term-missing

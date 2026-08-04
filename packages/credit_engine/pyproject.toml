@@ -1,0 +1,14 @@
+[project]
+name = "credit-engine"
+version = "0.1.0"
+description = "Deterministic educational corporate-credit calculation engine"
+requires-python = ">=3.12"
+dependencies = [
+  "jsonschema>=4.23,<5",
+  "pydantic>=2.11,<3",
+  "pyyaml>=6.0,<7",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"

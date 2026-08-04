@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Northstar Credit Platform — a deterministic, independently reviewed credit analysis engine."
+    />
+    <meta name="theme-color" content="#fbfcfe" />
+    <meta property="og:title" content="Northstar Credit Platform" />
+    <meta
+      property="og:description"
+      content="Credit analysis, built to withstand review."
+    />
+    <meta property="og:type" content="website" />
+    <title>Northstar Credit Platform</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Northstar home">Northstar</a>
+      <nav aria-label="Primary navigation">
+        <a href="#engine">Engine</a>
+        <a
+          href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
+          >Methodology</a
+        >
+        <a href="#verification">Verification</a>
+      </nav>
+      <a
+        class="button button-primary header-action"
+        href="https://github.com/changfanghan0324/northstar-credit-platform"
+        >View on GitHub</a
+      >
+    </header>
+
+    <main id="main">
+      <section class="hero section-shell" id="top">
+        <div class="hero-copy reveal">
+          <h1>Credit analysis,<br />built to withstand<br />review.</h1>
+          <p>
+            A deterministic credit engine with explicit reason codes, Decimal-safe
+            money, and independent cross-model verification.
+          </p>
+          <div class="button-row">
+            <a class="button button-primary" href="#engine">Explore the engine</a>
+            <a
+              class="button button-secondary"
+              href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/task1-rereview-claude-opus-5-round2.md"
+              >Read the review</a
+            >
+          </div>
+        </div>
+
+        <div class="verification-panel reveal" aria-label="Verified project results">
+          <div class="verification-row">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 6 5 6-5 6M12 18h7" />
+            </svg>
+            <span>54 tests passed</span>
+            <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </div>
+          <div class="verification-row">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="7" cy="5" r="2" />
+              <circle cx="17" cy="9" r="2" />
+              <circle cx="7" cy="19" r="2" />
+              <path d="M7 7v10M9 12h4a4 4 0 0 0 4-4" />
+            </svg>
+            <span>99.53% branch coverage</span>
+            <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </div>
+          <div class="verification-row">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 3H5v7H3v4h2v7h3M16 3h3v7h2v4h-2v7h-3M11 9h2M11 15h2" />
+            </svg>
+            <span>Strict Mypy</span>
+            <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </div>
+          <div class="verification-row">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="10" r="6" />
+              <path d="m9 21 3-3 3 3 1-6H8l1 6ZM12 6l1 2 2 .3-1.5 1.5.4 2.2-1.9-1-1.9 1 .4-2.2L9 8.3 11 8l1-2Z" />
+            </svg>
+            <span>Claude Opus 5 approved</span>
+            <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="engine section-shell" id="engine">
+        <div class="engine-intro reveal">
+          <h2>An engine that explains every answer.</h2>
+          <p>
+            Forty credit metrics share one explicit contract for status, confidence,
+            traceability, and corrective action.
+          </p>
+
+          <div class="capability-list">
+            <article class="capability">
+              <svg class="capability-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <circle cx="16" cy="16" r="13" />
+                <path d="M20 10h-6.2a3.3 3.3 0 0 0 0 6.6h4.4a3.3 3.3 0 0 1 0 6.6H12M16 7v18" />
+              </svg>
+              <div>
+                <h3>Decimal-safe money</h3>
+                <p>All monetary values use exact decimal arithmetic—no rounding drift.</p>
+              </div>
+            </article>
+            <article class="capability">
+              <svg class="capability-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M4 15 15 4h11a2 2 0 0 1 2 2v11L17 28 4 15Z" />
+                <circle cx="22" cy="10" r="2" />
+              </svg>
+              <div>
+                <h3>Typed reason codes</h3>
+                <p>Every result includes a reason code from a controlled vocabulary.</p>
+              </div>
+            </article>
+            <article class="capability">
+              <svg class="capability-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M16 3c4 3 8 4 12 4v8c0 7-4.5 11-12 14C8.5 26 4 22 4 15V7c4 0 8-1 12-4Z" />
+                <path d="m11 16 3 3 7-7" />
+              </svg>
+              <div>
+                <h3>Currency guards</h3>
+                <p>Calculations block on currency mismatches before producing a result.</p>
+              </div>
+            </article>
+            <article class="capability">
+              <svg class="capability-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M3 28h26M6 25v-8h5v8M14 25V10h5v15M22 25V4h5v21" />
+              </svg>
+              <div>
+                <h3>Confidence factors</h3>
+                <p>Confidence follows explicit inputs and documented data-quality signals.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="audit-column reveal">
+          <pre class="audit-panel" aria-label="Example credit metric result"><code>{
+  <span class="code-key">"metric_id"</span>: <span class="code-value">"ratio.dscr_existing"</span>,
+  <span class="code-key">"status"</span>: <span class="code-value">"ok"</span>,
+  <span class="code-key">"reason_code"</span>: <span class="code-value">"ok"</span>,
+  <span class="code-key">"value"</span>: <span class="code-value">"1.4200"</span>,
+  <span class="code-key">"formula_id"</span>: <span class="code-value">"debt_service_coverage"</span>,
+  <span class="code-key">"confidence"</span>: <span class="code-null">null</span>
+}</code></pre>
+          <p class="audit-caption">Every result is reviewable.</p>
+          <a
+            class="text-link"
+            href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
+            >Read the methodology <span aria-hidden="true">→</span></a
+          >
+        </div>
+      </section>
+
+      <section class="evidence section-shell" id="verification">
+        <div class="evidence-heading reveal">
+          <h2>Verified twice. Accepted once.</h2>
+          <p>
+            Codex implemented the required fixes. Claude Opus 5 independently reproduced
+            the hashes and full verification gate before acceptance.
+          </p>
+        </div>
+
+        <dl class="evidence-ledger reveal">
+          <div>
+            <dt>54 tests</dt>
+            <dd><span class="ledger-check" aria-hidden="true">✓</span> passed</dd>
+          </div>
+          <div>
+            <dt>Branch-aware coverage</dt>
+            <dd><span class="ledger-check" aria-hidden="true">✓</span> 99.53%</dd>
+          </div>
+          <div>
+            <dt>Bundle SHA-256</dt>
+            <dd><span class="ledger-check" aria-hidden="true">✓</span> 4bb34ad1…6ccc</dd>
+          </div>
+          <div>
+            <dt>Independent review</dt>
+            <dd>
+              <span class="ledger-check" aria-hidden="true">✓</span>
+              TASK_1_ACCEPTED: yes
+            </dd>
+          </div>
+        </dl>
+
+        <div class="button-row reveal">
+          <a
+            class="button button-secondary"
+            href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/task1-rereview-claude-opus-5-round2.md"
+            >Open the review record <span aria-hidden="true">→</span></a
+          >
+          <a
+            class="button button-secondary"
+            href="https://github.com/changfanghan0324/northstar-credit-platform/tree/main/packages/credit_engine"
+            >Browse the source <span aria-hidden="true">→</span></a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <p class="footer-brand">Northstar Credit Platform</p>
+        <p>Deterministic by design.</p>
+      </div>
+      <nav aria-label="Footer navigation">
+        <a
+          href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
+          >Methodology</a
+        >
+        <a
+          href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/review-log.md"
+          >Review log</a
+        >
+        <a href="https://github.com/changfanghan0324/northstar-credit-platform">GitHub</a>
+      </nav>
+    </footer>
+  </body>
+</html>
