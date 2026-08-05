@@ -3,17 +3,24 @@ name = "northstar-credit-platform"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.16,<2",
+  "fastapi>=0.116,<1",
   "jsonschema>=4.23,<5",
   "pydantic>=2.11,<3",
+  "psycopg[binary]>=3.2,<4",
   "pyyaml>=6.0,<7",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
   "mypy==1.20.2",
+  "httpx2>=2.9,<3",
   "pytest>=8.4,<9",
   "pytest-cov>=6.2,<7",
   "ruff==0.16.1",
+  "types-PyYAML>=6.0,<7",
 ]
 
 [tool.uv]
@@ -21,7 +28,7 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
-pythonpath = ["packages/credit_engine"]
+pythonpath = ["packages/credit_engine", "packages/credit_app", "packages/policy", "apps/api"]
 testpaths = ["tests"]
 
 [tool.mypy]

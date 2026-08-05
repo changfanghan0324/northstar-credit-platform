@@ -30,7 +30,22 @@ fi
 
 cd "$project_root"
 
-"$python_bin" -m ruff check packages/credit_engine/credit_engine tests
-"$python_bin" -m ruff format --check packages/credit_engine/credit_engine tests
-"$python_bin" -m mypy packages/credit_engine/credit_engine
+"$python_bin" -m ruff check packages/credit_engine/credit_engine packages/credit_app packages/policy apps/api migrations tests
+"$python_bin" -m ruff format --check packages/credit_engine/credit_engine packages/credit_app packages/policy apps/api migrations tests
+PYTHONPATH="packages/credit_engine:packages/credit_app:packages/policy:apps/api" \
+  "$python_bin" -m mypy packages/credit_engine/credit_engine packages/credit_app packages/policy apps/api
 "$python_bin" -m pytest --cov=credit_engine --cov-report=term-missing
+
+if [ -x "$project_root/apps/web/node_modules/.bin/tsc" ]; then
+    if command -v node >/dev/null 2>&1; then
+        node_dir=$(dirname "$(command -v node)")
+    else
+        node_dir=/Users/peter/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin
+    fi
+    PATH="$node_dir:$PATH" "$project_root/apps/web/node_modules/.bin/tsc" --noEmit --project "$project_root/apps/web/tsconfig.json"
+    (
+        cd "$project_root/apps/web"
+        PATH="$node_dir:$PATH" ./node_modules/.bin/eslint .
+        PATH="$node_dir:$PATH" ./node_modules/.bin/next build
+    )
+fi

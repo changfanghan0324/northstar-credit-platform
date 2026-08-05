@@ -1,6 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true,
+  "framework": "nextjs",
+  "installCommand": "pnpm --dir apps/web install --frozen-lockfile",
+  "buildCommand": "pnpm --dir apps/web build",
+  "outputDirectory": "apps/web/.next",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{apps/api/**,packages/**,data/**}",
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {"source": "/health", "destination": "/api/index"},
+    {"source": "/demo-cases", "destination": "/api/index"},
+    {"source": "/demo-cases/:path*", "destination": "/api/index"},
+    {"source": "/cases/:path*", "destination": "/api/index"}
+  ],
   "headers": [
     {
       "source": "/(.*)",

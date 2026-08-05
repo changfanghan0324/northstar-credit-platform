@@ -1,6 +1,6 @@
 # Decision Log
 
-## DEC-001 — Product and audience
+## DEC-001 — Product and audience (superseded by DEC-009)
 
 Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 
@@ -9,7 +9,7 @@ Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 - Reversibility: high; copy and onboarding can be widened later without changing the financial core.
 - Owner/reviewer: Codex / Claude Opus 5.
 
-## DEC-002 — MVP scope
+## DEC-002 — MVP scope (superseded by DEC-011)
 
 Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 
@@ -40,7 +40,7 @@ Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 - Decision: one additive-only `Analyst details` preference. No duplicated application, hidden values, or export differences.
 - Test: metric-value set and exports are identical across states; annotations are the only permitted difference.
 
-## DEC-006 — Deployment security
+## DEC-006 — Deployment security (superseded by DEC-010)
 
 Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 
@@ -65,3 +65,45 @@ Date: 2026-08-03 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`)
 - Rationale: early formulas/goldens preserve independent verification; later workbook generation avoids front-loading layout work that does not unblock engine correctness.
 - Risk: the final workbook could slip; it remains a completion gate and the verify plan keeps reconciliation mandatory.
 - Reversibility: high; workbook generation can move earlier without changing formulas.
+
+## DEC-009 — Corrective audience model
+
+Date: 2026-08-04 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`, high)
+
+- Decision: the public surface and first 90 seconds of Overview serve a non-specialist
+  evaluator; the workspace depth target is a junior credit analyst; professional users
+  receive additive Analyst annotations.
+- Guided mode never hides material adverse facts. Guided and Analyst expose identical
+  metric/value sets and exports.
+- Evidence: `corrective-debate-codex.md` and `corrective-debate-claude.md`.
+
+## DEC-010 — Public session persistence and security
+
+Date: 2026-08-04 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`, high)
+
+- Decision: public unauthenticated cases are session-scoped and ephemeral, TTL-expired,
+  rate-limited, payload-capped, and inaccessible across sessions. The UI states that
+  there is no account and data expires.
+- PostgreSQL is the only durable multi-user store. In-memory repositories are test
+  doubles only.
+- No PII fields or authentication claim appear in the public demo.
+
+## DEC-011 — Corrective scope and vertical slices
+
+Date: 2026-08-04 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`, high)
+
+- Decision: remove the 40-borrower portfolio and Power BI specification from the
+  corrective completion path. Demote the full Excel workbook to reconciliation work.
+- Slice 1A proves engine-to-API-to-UI equality. Slice 1B immediately adds scenarios,
+  covenants, decision, memo, guided save/reload, and PostgreSQL.
+- Styling begins only after Slice 1B exits. The split is ordering, not scope deferral.
+
+## DEC-012 — API numeric contract and calculation runs
+
+Date: 2026-08-04 · Owner: Codex · Reviewer: Claude Opus 5 (`claude-opus-5`, high)
+
+- Money uses integer minor-unit objects with currency and exponent; ratios use decimal
+  strings; the frontend performs no financial arithmetic.
+- Generated TypeScript contracts are drift-checked against OpenAPI.
+- Calculation runs are immutable and include engine version, policy version and hash,
+  input hash, and calculation timestamp. Failed calculations persist no partial results.

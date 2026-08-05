@@ -1,0 +1,77 @@
+{
+  "slug": "stable-manufacturer",
+  "borrower": {
+    "legal_name": "Alder Creek Components, Inc.",
+    "industry": "Specialty industrial components",
+    "headquarters": "Columbus, Ohio",
+    "description": "Synthetic manufacturer with diversified OEM customers and recurring aftermarket demand."
+  },
+  "request": {
+    "amount": {"amount_minor": 1500000000, "currency": "USD", "minor_unit_exponent": 2},
+    "purpose": "Fund a new production line and refinance near-term maturities",
+    "annual_rate": "0.08",
+    "maturity_years": 5
+  },
+  "financials": {
+    "revenue": {"amount_minor": 20000000000},
+    "prior_revenue": {"amount_minor": 19000000000},
+    "ebit": {"amount_minor": 2800000000},
+    "depreciation_amortization": {"amount_minor": 1200000000},
+    "positive_ebitda_adjustments": {"amount_minor": 200000000},
+    "negative_ebitda_adjustments": {"amount_minor": 100000000},
+    "prior_adjusted_ebitda": {"amount_minor": 3800000000},
+    "cfo": {"amount_minor": 3000000000},
+    "capex": {"amount_minor": 1000000000},
+    "maintenance_capex": {"amount_minor": 800000000},
+    "cash_taxes": {"amount_minor": 500000000},
+    "working_capital_increase": {"amount_minor": 300000000},
+    "mandatory_pension": {"amount_minor": 100000000},
+    "cash_interest": {"amount_minor": 600000000},
+    "scheduled_principal": {"amount_minor": 800000000},
+    "short_term_borrowings": {"amount_minor": 500000000},
+    "current_maturities": {"amount_minor": 500000000},
+    "long_term_debt": {"amount_minor": 6000000000},
+    "finance_leases": {"amount_minor": 500000000},
+    "unrestricted_cash": {"amount_minor": 2000000000},
+    "cash_availability_factor": "0.80",
+    "current_assets": {"amount_minor": 8000000000},
+    "current_liabilities": {"amount_minor": 4000000000},
+    "accounts_receivable": {"amount_minor": 3000000000},
+    "inventory": {"amount_minor": 2500000000},
+    "other_current_assets": {"amount_minor": 500000000},
+    "undrawn_revolver": {"amount_minor": 1000000000},
+    "minimum_operating_cash": {"amount_minor": 800000000},
+    "monthly_stressed_cash_burn": {"amount_minor": 300000000},
+    "equity": {"amount_minor": 8000000000},
+    "total_liabilities": {"amount_minor": 10000000000},
+    "total_assets": {"amount_minor": 18000000000},
+    "secured_debt": {"amount_minor": 3000000000},
+    "contractual_rent": {"amount_minor": 400000000},
+    "net_income": {"amount_minor": 1600000000},
+    "collateral_capacity": {"amount_minor": 3000000000}
+  },
+  "business_risk": {
+    "industry": "78",
+    "competitive_position": "82",
+    "customer_concentration": "72",
+    "diversification": "76",
+    "management_policy": "84",
+    "governance_event": "90",
+    "strengths": [
+      "Diversified OEM and aftermarket demand",
+      "Positive free cash flow through the cycle",
+      "Experienced management team"
+    ],
+    "risks": [
+      "Exposure to industrial production cycles",
+      "Working-capital needs rise during expansion",
+      "New production line carries execution risk"
+    ]
+  },
+  "scenarios": {
+    "base": {"revenue_growth": "0.04", "ebitda_margin_change": "0.00", "rate_shock": "0.00", "working_capital_pct_revenue": "0.015", "maintenance_capex_pct_revenue": "0.04"},
+    "downside": {"revenue_growth": "-0.08", "ebitda_margin_change": "-0.025", "rate_shock": "0.02", "working_capital_pct_revenue": "0.025", "maintenance_capex_pct_revenue": "0.04"},
+    "severe": {"revenue_growth": "-0.18", "ebitda_margin_change": "-0.055", "rate_shock": "0.04", "working_capital_pct_revenue": "0.035", "maintenance_capex_pct_revenue": "0.035"}
+  },
+  "data_as_of": "2026-06-30"
+}

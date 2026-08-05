@@ -9,3 +9,7 @@ __pycache__/
 *.egg-info/
 coverage.xml
 htmlcov/
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo

@@ -1,0 +1,45 @@
+{
+  "extends": "stable-manufacturer",
+  "slug": "software-services",
+  "borrower": {
+    "legal_name": "Meridian Workflow Systems, Inc.",
+    "industry": "Vertical software and managed services",
+    "headquarters": "Boston, Massachusetts",
+    "description": "Synthetic subscription software provider with high recurring revenue and limited tangible collateral."
+  },
+  "request": {
+    "amount": {"amount_minor": 2000000000},
+    "purpose": "Refinance existing debt and fund product development",
+    "annual_rate": "0.085"
+  },
+  "financials": {
+    "revenue": {"amount_minor": 15000000000},
+    "prior_revenue": {"amount_minor": 13200000000},
+    "ebit": {"amount_minor": 1900000000},
+    "depreciation_amortization": {"amount_minor": 600000000},
+    "positive_ebitda_adjustments": {"amount_minor": 0},
+    "negative_ebitda_adjustments": {"amount_minor": 0},
+    "cfo": {"amount_minor": 2800000000},
+    "capex": {"amount_minor": 500000000},
+    "maintenance_capex": {"amount_minor": 450000000},
+    "cash_taxes": {"amount_minor": 300000000},
+    "working_capital_increase": {"amount_minor": -250000000},
+    "cash_interest": {"amount_minor": 350000000},
+    "scheduled_principal": {"amount_minor": 400000000},
+    "long_term_debt": {"amount_minor": 3500000000},
+    "unrestricted_cash": {"amount_minor": 2500000000},
+    "current_assets": {"amount_minor": 5600000000},
+    "current_liabilities": {"amount_minor": 2700000000},
+    "collateral_capacity": {"amount_minor": 900000000}
+  },
+  "business_risk": {
+    "industry": "82",
+    "competitive_position": "76",
+    "customer_concentration": "86",
+    "diversification": "72",
+    "management_policy": "78",
+    "governance_event": "86",
+    "strengths": ["Recurring subscription revenue", "Strong cash conversion", "Low customer concentration"],
+    "risks": ["Limited tangible collateral", "Product-obsolescence risk", "Retention depends on service quality"]
+  }
+}

@@ -1,0 +1,66 @@
+version: "1.0.0"
+name: "Northstar Educational Corporate Credit Policy"
+reporting_currency: "USD"
+maximum_leverage: "3.50"
+minimum_dscr: "1.25"
+minimum_interest_coverage: "2.00"
+minimum_liquidity_minor: 800000000
+maximum_maturity_months: 60
+policy_capacity_minor: 2500000000
+material_reweighting_pct: "15"
+blocked_reweighting_pct: "30"
+grade_labels:
+  1: "Excellent"
+  2: "Strong"
+  3: "Sound"
+  4: "Good"
+  5: "Acceptable"
+  6: "Watch"
+  7: "Weak"
+  8: "High risk"
+  9: "Very high risk"
+  10: "Default / loss"
+grade_bands:
+  - { lower: "90", upper: "100", lower_inclusive: true, upper_inclusive: true, score: "100", label: "1" }
+  - { lower: "82", upper: "90", lower_inclusive: true, upper_inclusive: false, score: "90", label: "2" }
+  - { lower: "74", upper: "82", lower_inclusive: true, upper_inclusive: false, score: "82", label: "3" }
+  - { lower: "66", upper: "74", lower_inclusive: true, upper_inclusive: false, score: "74", label: "4" }
+  - { lower: "58", upper: "66", lower_inclusive: true, upper_inclusive: false, score: "66", label: "5" }
+  - { lower: "50", upper: "58", lower_inclusive: true, upper_inclusive: false, score: "58", label: "6" }
+  - { lower: "42", upper: "50", lower_inclusive: true, upper_inclusive: false, score: "50", label: "7" }
+  - { lower: "34", upper: "42", lower_inclusive: true, upper_inclusive: false, score: "42", label: "8" }
+  - { lower: "0", upper: "34", lower_inclusive: false, upper_inclusive: false, score: "34", label: "9" }
+  - { lower: null, upper: "0", lower_inclusive: true, upper_inclusive: true, score: "0", label: "10" }
+leverage_bands:
+  - { lower: null, upper: "1.5", upper_inclusive: true, score: "100", label: "≤1.50x" }
+  - { lower: "1.5", upper: "2.5", lower_inclusive: false, upper_inclusive: true, score: "85", label: "1.50x–2.50x" }
+  - { lower: "2.5", upper: "3.5", lower_inclusive: false, upper_inclusive: true, score: "70", label: "2.50x–3.50x" }
+  - { lower: "3.5", upper: "4.5", lower_inclusive: false, upper_inclusive: true, score: "50", label: "3.50x–4.50x" }
+  - { lower: "4.5", upper: "6.0", lower_inclusive: false, upper_inclusive: true, score: "25", label: "4.50x–6.00x" }
+  - { lower: "6.0", upper: null, lower_inclusive: false, score: "10", label: ">6.00x" }
+coverage_bands:
+  - { lower: "8.0", upper: null, lower_inclusive: true, score: "100", label: "≥8.00x" }
+  - { lower: "5.0", upper: "8.0", lower_inclusive: true, score: "85", label: "5.00x–8.00x" }
+  - { lower: "3.0", upper: "5.0", lower_inclusive: true, score: "70", label: "3.00x–5.00x" }
+  - { lower: "2.0", upper: "3.0", lower_inclusive: true, score: "50", label: "2.00x–3.00x" }
+  - { lower: "1.5", upper: "2.0", lower_inclusive: true, score: "30", label: "1.50x–2.00x" }
+  - { lower: "1.0", upper: "1.5", lower_inclusive: true, score: "15", label: "1.00x–1.50x" }
+  - { lower: null, upper: "1.0", upper_inclusive: false, score: "0", label: "<1.00x" }
+dscr_bands:
+  - { lower: "2.0", upper: null, lower_inclusive: true, score: "100", label: "≥2.00x" }
+  - { lower: "1.5", upper: "2.0", lower_inclusive: true, score: "80", label: "1.50x–2.00x" }
+  - { lower: "1.25", upper: "1.5", lower_inclusive: true, score: "60", label: "1.25x–1.50x" }
+  - { lower: "1.0", upper: "1.25", lower_inclusive: true, score: "35", label: "1.00x–1.25x" }
+  - { lower: null, upper: "1.0", upper_inclusive: false, score: "0", label: "<1.00x" }
+weights:
+  - { key: "leverage", weight: "18", category: "financial" }
+  - { key: "coverage", weight: "18", category: "financial" }
+  - { key: "liquidity", weight: "10", category: "financial" }
+  - { key: "cash_flow", weight: "10", category: "financial" }
+  - { key: "profitability", weight: "9", category: "financial" }
+  - { key: "industry", weight: "10", category: "business" }
+  - { key: "competitive_position", weight: "7", category: "business" }
+  - { key: "customer_concentration", weight: "6", category: "business" }
+  - { key: "diversification", weight: "4", category: "business" }
+  - { key: "management_policy", weight: "5", category: "business" }
+  - { key: "governance_event", weight: "3", category: "business" }

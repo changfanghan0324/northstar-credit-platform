@@ -1,0 +1,44 @@
+{
+  "extends": "stable-manufacturer",
+  "slug": "cyclical-distributor",
+  "borrower": {
+    "legal_name": "Pioneer Fleet Supply, LLC",
+    "industry": "Commercial vehicle parts distribution",
+    "headquarters": "Dallas, Texas",
+    "description": "Synthetic regional distributor with cyclical end-market exposure and moderate customer concentration."
+  },
+  "request": {
+    "amount": {"amount_minor": 2800000000},
+    "purpose": "Acquire two regional distribution centers and expand working-capital capacity",
+    "annual_rate": "0.095"
+  },
+  "financials": {
+    "revenue": {"amount_minor": 24000000000},
+    "prior_revenue": {"amount_minor": 26000000000},
+    "ebit": {"amount_minor": 2100000000},
+    "depreciation_amortization": {"amount_minor": 900000000},
+    "positive_ebitda_adjustments": {"amount_minor": 100000000},
+    "negative_ebitda_adjustments": {"amount_minor": 0},
+    "cfo": {"amount_minor": 1900000000},
+    "maintenance_capex": {"amount_minor": 700000000},
+    "cash_taxes": {"amount_minor": 350000000},
+    "working_capital_increase": {"amount_minor": 650000000},
+    "cash_interest": {"amount_minor": 750000000},
+    "scheduled_principal": {"amount_minor": 900000000},
+    "long_term_debt": {"amount_minor": 7600000000},
+    "unrestricted_cash": {"amount_minor": 1100000000},
+    "current_assets": {"amount_minor": 9000000000},
+    "current_liabilities": {"amount_minor": 6200000000},
+    "collateral_capacity": {"amount_minor": 2200000000}
+  },
+  "business_risk": {
+    "industry": "54",
+    "competitive_position": "66",
+    "customer_concentration": "48",
+    "diversification": "55",
+    "management_policy": "65",
+    "governance_event": "75",
+    "strengths": ["Established regional footprint", "Broad supplier relationships"],
+    "risks": ["Cyclical fleet demand", "Top-five customer concentration", "Acquisition integration risk"]
+  }
+}

@@ -1,0 +1,15 @@
+"use client";
+
+import { ArrowLeft, ArrowRight, LoaderCircle } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+import { Header } from "./Header";
+import { api } from "@/lib/api";
+import { type Language, prefix } from "@/lib/i18n";
+import type { DemoCase } from "@/lib/types";
+
+export function NewCase({ language }: { language: Language }) { const zh=language==="zh-TW"; const root=prefix(language); const [demos,setDemos]=useState<DemoCase[]>([]); const [profile,setProfile]=useState("stable-manufacturer"); const [name,setName]=useState(""); const [amount,setAmount]=useState(15); const [loading,setLoading]=useState(false); const [error,setError]=useState(""); const router=useRouter(); useEffect(()=>{api.demos().then(setDemos).catch(()=>setError(zh?"無法載入範本。":"Unable to load templates."));},[zh]);
+  async function submit(event: FormEvent) { event.preventDefault(); setLoading(true); setError(""); try { const opened=await api.openDemo(profile); const input=opened.input; input.slug=`custom-${Date.now()}`; if(name.trim()) input.borrower.legal_name=name.trim(); input.request.amount.amount_minor=Math.round(amount*100_000_000); const created=await api.createCase(input); await api.analyze(created.id); router.push(`${root}/app/cases/${created.id}/overview`); } catch(e){setError(String(e));setLoading(false);} }
+  return <><Header language={language}/><main className="new-case"><Link className="back" href={`${root}/`}><ArrowLeft size={16}/>{zh?"返回首頁":"Back home"}</Link><div className="new-case-head"><p className="eyebrow">{zh?"新案件":"New underwriting case"}</p><h1>{zh?"建立可計算的授信案件":"Create a calculated credit case"}</h1><p>{zh?"選擇一組合成財務輪廓，再自訂借款人名稱與申請額。儲存後將立即執行完整分析。":"Choose a synthetic financial profile, then customize the borrower and request. Saving runs the full analysis immediately."}</p></div><form onSubmit={submit}><fieldset><legend>1. {zh?"財務輪廓":"Financial profile"}</legend><div className="profile-options">{demos.map(d=><label className={profile===d.slug?"selected":""} key={d.slug}><input type="radio" name="profile" value={d.slug} checked={profile===d.slug} onChange={()=>setProfile(d.slug)}/><strong>{d.borrower.industry}</strong><span>{d.borrower.description}</span></label>)}</div></fieldset><fieldset><legend>2. {zh?"借款人與申請":"Borrower and request"}</legend><div className="input-grid"><label><span>{zh?"公司名稱":"Company name"}</span><input value={name} onChange={e=>setName(e.target.value)} placeholder={zh?"留空使用合成公司名稱":"Leave blank to use synthetic name"}/></label><label><span>{zh?"申請額（百萬美元）":"Requested amount (USD millions)"}</span><input type="number" min="1" max="100" step="0.5" value={amount} onChange={e=>setAmount(Number(e.target.value))}/></label></div></fieldset>{error&&<p className="error">{error}</p>}<button className="button primary" disabled={loading}>{loading?<LoaderCircle className="spin" size={17}/>:null}{zh?"儲存並執行分析":"Save and run analysis"}<ArrowRight size={17}/></button></form></main></>;
+}
