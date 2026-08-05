@@ -2,6 +2,7 @@
   "name": "northstar-credit-platform",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "build": "pnpm --dir apps/web build"
   }
