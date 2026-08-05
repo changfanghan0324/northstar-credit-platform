@@ -6,7 +6,7 @@ evidence.
 
 ## Public delivery
 
-- Website: deployed on Vercel from this repository.
+- Website: https://northstar-credit-platform.vercel.app
 - Source: `packages/credit_engine/credit_engine/`
 - Methodology: `docs/methodology.md`
 - Independent acceptance record:
