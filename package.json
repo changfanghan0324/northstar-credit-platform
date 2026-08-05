@@ -2,6 +2,11 @@
   "name": "northstar-credit-platform",
   "version": "1.0.0",
   "private": true,
+  "dependencies": {
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
   "scripts": {
     "build": "pnpm --dir apps/web build"
   }
