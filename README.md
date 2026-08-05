@@ -27,7 +27,8 @@ reproduced the verification gate and accepted the implementation.
 ## Website
 
 The public project page is a dependency-free static site. Run it locally with any
-static HTTP server, for example:
+static HTTP server. English and Traditional Chinese are available from the language
+switcher in the site header (`/` and `/zh-TW/`). To run it locally:
 
 ```sh
 python3 -m http.server 4173

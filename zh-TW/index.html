@@ -1,49 +1,46 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Northstar Credit Platform — a deterministic, independently reviewed credit analysis engine."
+      content="Northstar 信用分析平台——一套具備確定性並經獨立審查的信用分析引擎。"
     />
     <meta name="theme-color" content="#fbfcfe" />
-    <meta property="og:title" content="Northstar Credit Platform" />
-    <meta
-      property="og:description"
-      content="Credit analysis, built to withstand review."
-    />
+    <meta property="og:title" content="Northstar 信用分析平台" />
+    <meta property="og:description" content="信用分析，專為審查而設計。" />
     <meta property="og:type" content="website" />
-    <meta property="og:locale" content="en_US" />
-    <link rel="canonical" href="https://northstar-credit-platform.vercel.app/" />
+    <meta property="og:locale" content="zh_TW" />
+    <link rel="canonical" href="https://northstar-credit-platform.vercel.app/zh-TW/" />
     <link rel="alternate" hreflang="en" href="https://northstar-credit-platform.vercel.app/" />
     <link rel="alternate" hreflang="zh-Hant" href="https://northstar-credit-platform.vercel.app/zh-TW/" />
     <link rel="alternate" hreflang="x-default" href="https://northstar-credit-platform.vercel.app/" />
-    <title>Northstar Credit Platform</title>
+    <title>Northstar 信用分析平台</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#main">跳至主要內容</a>
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="Northstar home">Northstar</a>
-      <nav class="primary-nav" aria-label="Primary navigation">
-        <a href="#engine">Engine</a>
+      <a class="brand" href="#top" aria-label="Northstar 首頁">Northstar</a>
+      <nav class="primary-nav" aria-label="主要導覽">
+        <a href="#engine">引擎</a>
         <a
           href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
-          >Methodology</a
+          >方法論</a
         >
-        <a href="#verification">Verification</a>
+        <a href="#verification">驗證</a>
       </nav>
       <div class="header-actions">
-        <div class="language-switcher" role="group" aria-label="Language selection">
-          <span aria-current="page">EN</span>
+        <div class="language-switcher" role="group" aria-label="語言選擇">
+          <a href="/" lang="en" hreflang="en">EN</a>
           <span aria-hidden="true">/</span>
-          <a href="/zh-TW/" lang="zh-Hant" hreflang="zh-Hant">繁中</a>
+          <span aria-current="page">繁中</span>
         </div>
         <a
           class="button button-primary header-action"
           href="https://github.com/changfanghan0324/northstar-credit-platform"
-          >View on GitHub</a
+          >前往 GitHub</a
         >
       </div>
     </header>
@@ -51,27 +48,27 @@
     <main id="main">
       <section class="hero section-shell" id="top">
         <div class="hero-copy reveal">
-          <h1>Credit analysis,<br />built to withstand<br />review.</h1>
+          <h1>信用分析，<br />專為審查而設計。</h1>
           <p>
-            A deterministic credit engine with explicit reason codes, Decimal-safe
-            money, and independent cross-model verification.
+            確定性信用引擎，具備明確原因代碼、Decimal 精確金額運算，
+            以及跨模型獨立驗證。
           </p>
           <div class="button-row">
-            <a class="button button-primary" href="#engine">Explore the engine</a>
+            <a class="button button-primary" href="#engine">探索引擎</a>
             <a
               class="button button-secondary"
               href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/task1-rereview-claude-opus-5-round2.md"
-              >Read the review</a
+              >閱讀審查報告</a
             >
           </div>
         </div>
 
-        <div class="verification-panel reveal" aria-label="Verified project results">
+        <div class="verification-panel reveal" aria-label="已驗證的專案結果">
           <div class="verification-row">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m5 6 5 6-5 6M12 18h7" />
             </svg>
-            <span>54 tests passed</span>
+            <span>54 項測試通過</span>
             <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m5 12 4 4L19 6" />
             </svg>
@@ -83,7 +80,7 @@
               <circle cx="7" cy="19" r="2" />
               <path d="M7 7v10M9 12h4a4 4 0 0 0 4-4" />
             </svg>
-            <span>99.53% branch coverage</span>
+            <span>99.53% 分支覆蓋率</span>
             <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m5 12 4 4L19 6" />
             </svg>
@@ -102,7 +99,7 @@
               <circle cx="12" cy="10" r="6" />
               <path d="m9 21 3-3 3 3 1-6H8l1 6ZM12 6l1 2 2 .3-1.5 1.5.4 2.2-1.9-1-1.9 1 .4-2.2L9 8.3 11 8l1-2Z" />
             </svg>
-            <span>Claude Opus 5 approved</span>
+            <span>Claude Opus 5 核准</span>
             <svg class="check" viewBox="0 0 24 24" aria-hidden="true">
               <path d="m5 12 4 4L19 6" />
             </svg>
@@ -112,10 +109,9 @@
 
       <section class="engine section-shell" id="engine">
         <div class="engine-intro reveal">
-          <h2>An engine that explains every answer.</h2>
+          <h2>每一個答案，都能清楚解釋。</h2>
           <p>
-            Forty credit metrics share one explicit contract for status, confidence,
-            traceability, and corrective action.
+            四十項信用指標共用一套明確契約，涵蓋狀態、信心度、可追溯性與矯正措施。
           </p>
 
           <div class="capability-list">
@@ -125,8 +121,8 @@
                 <path d="M20 10h-6.2a3.3 3.3 0 0 0 0 6.6h4.4a3.3 3.3 0 0 1 0 6.6H12M16 7v18" />
               </svg>
               <div>
-                <h3>Decimal-safe money</h3>
-                <p>All monetary values use exact decimal arithmetic—no rounding drift.</p>
+                <h3>Decimal 精確金額運算</h3>
+                <p>所有金額均採精確十進位運算，避免捨入誤差。</p>
               </div>
             </article>
             <article class="capability">
@@ -135,8 +131,8 @@
                 <circle cx="22" cy="10" r="2" />
               </svg>
               <div>
-                <h3>Typed reason codes</h3>
-                <p>Every result includes a reason code from a controlled vocabulary.</p>
+                <h3>型別化原因代碼</h3>
+                <p>每項結果皆包含受控詞彙表中的原因代碼。</p>
               </div>
             </article>
             <article class="capability">
@@ -145,8 +141,8 @@
                 <path d="m11 16 3 3 7-7" />
               </svg>
               <div>
-                <h3>Currency guards</h3>
-                <p>Calculations block on currency mismatches before producing a result.</p>
+                <h3>幣別防護</h3>
+                <p>計算會在產生結果前阻擋幣別不一致的輸入。</p>
               </div>
             </article>
             <article class="capability">
@@ -154,15 +150,15 @@
                 <path d="M3 28h26M6 25v-8h5v8M14 25V10h5v15M22 25V4h5v21" />
               </svg>
               <div>
-                <h3>Confidence factors</h3>
-                <p>Confidence follows explicit inputs and documented data-quality signals.</p>
+                <h3>信心度因素</h3>
+                <p>信心度依據明確輸入與已記錄的資料品質訊號計算。</p>
               </div>
             </article>
           </div>
         </div>
 
         <div class="audit-column reveal">
-          <pre class="audit-panel" aria-label="Example credit metric result"><code>{
+          <pre class="audit-panel" aria-label="信用指標結果範例"><code>{
   <span class="code-key">"metric_id"</span>: <span class="code-value">"ratio.dscr_existing"</span>,
   <span class="code-key">"status"</span>: <span class="code-value">"ok"</span>,
   <span class="code-key">"reason_code"</span>: <span class="code-value">"ok"</span>,
@@ -170,39 +166,39 @@
   <span class="code-key">"formula_id"</span>: <span class="code-value">"debt_service_coverage"</span>,
   <span class="code-key">"confidence"</span>: <span class="code-null">null</span>
 }</code></pre>
-          <p class="audit-caption">Every result is reviewable.</p>
+          <p class="audit-caption">每項結果皆可審查。</p>
           <a
             class="text-link"
             href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
-            >Read the methodology <span aria-hidden="true">→</span></a
+            >閱讀方法論 <span aria-hidden="true">→</span></a
           >
         </div>
       </section>
 
       <section class="evidence section-shell" id="verification">
         <div class="evidence-heading reveal">
-          <h2>Verified twice. Accepted once.</h2>
+          <h2>雙重驗證，一次驗收。</h2>
           <p>
-            Codex implemented the required fixes. Claude Opus 5 independently reproduced
-            the hashes and full verification gate before acceptance.
+            Codex 完成必要修正；Claude Opus 5 在驗收前，
+            獨立重現雜湊值與完整驗證關卡。
           </p>
         </div>
 
         <dl class="evidence-ledger reveal">
           <div>
-            <dt>54 tests</dt>
-            <dd><span class="ledger-check" aria-hidden="true">✓</span> passed</dd>
+            <dt>54 項測試</dt>
+            <dd><span class="ledger-check" aria-hidden="true">✓</span> 通過</dd>
           </div>
           <div>
-            <dt>Branch-aware coverage</dt>
+            <dt>分支感知覆蓋率</dt>
             <dd><span class="ledger-check" aria-hidden="true">✓</span> 99.53%</dd>
           </div>
           <div>
-            <dt>Bundle SHA-256</dt>
+            <dt>套件 SHA-256</dt>
             <dd><span class="ledger-check" aria-hidden="true">✓</span> 4bb34ad1…6ccc</dd>
           </div>
           <div>
-            <dt>Independent review</dt>
+            <dt>獨立審查</dt>
             <dd>
               <span class="ledger-check" aria-hidden="true">✓</span>
               TASK_1_ACCEPTED: yes
@@ -214,12 +210,12 @@
           <a
             class="button button-secondary"
             href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/task1-rereview-claude-opus-5-round2.md"
-            >Open the review record <span aria-hidden="true">→</span></a
+            >開啟審查紀錄 <span aria-hidden="true">→</span></a
           >
           <a
             class="button button-secondary"
             href="https://github.com/changfanghan0324/northstar-credit-platform/tree/main/packages/credit_engine"
-            >Browse the source <span aria-hidden="true">→</span></a
+            >瀏覽原始碼 <span aria-hidden="true">→</span></a
           >
         </div>
       </section>
@@ -227,17 +223,17 @@
 
     <footer class="site-footer">
       <div>
-        <p class="footer-brand">Northstar Credit Platform</p>
-        <p>Deterministic by design.</p>
+        <p class="footer-brand">Northstar 信用分析平台</p>
+        <p>以確定性為設計核心。</p>
       </div>
-      <nav aria-label="Footer navigation">
+      <nav aria-label="頁尾導覽">
         <a
           href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/methodology.md"
-          >Methodology</a
+          >方法論</a
         >
         <a
           href="https://github.com/changfanghan0324/northstar-credit-platform/blob/main/docs/collaboration/review-log.md"
-          >Review log</a
+          >審查紀錄</a
         >
         <a href="https://github.com/changfanghan0324/northstar-credit-platform">GitHub</a>
       </nav>

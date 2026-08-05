@@ -10,6 +10,7 @@
   --success: #17883d;
   --serif: Georgia, "Times New Roman", serif;
   --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --sans-cjk: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   --gutter: clamp(1.25rem, 5vw, 5.5rem);
   --max-width: 96rem;
 }
@@ -74,32 +75,84 @@ a {
   text-decoration: none;
 }
 
-.site-header nav,
+.site-header .primary-nav,
 .site-footer nav {
   display: flex;
   align-items: center;
   gap: clamp(1.25rem, 3.5vw, 4rem);
 }
 
-.site-header nav a,
+.site-header .primary-nav a,
 .site-footer nav a,
 .text-link {
   text-underline-offset: 0.35rem;
   text-decoration-thickness: 1px;
 }
 
-.site-header nav a {
+.site-header .primary-nav a {
   text-decoration: none;
 }
 
-.site-header nav a:hover,
+.site-header .primary-nav a:hover,
 .site-footer nav a:hover,
 .text-link:hover {
   color: var(--accent);
 }
 
-.header-action {
+.header-actions {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 1.6vw, 1.5rem);
+}
+
+.language-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.language-switcher a {
+  color: var(--accent);
+  text-underline-offset: 0.3rem;
+}
+
+.language-switcher [aria-current="page"] {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+html[lang="zh-Hant"] body {
+  font-family: var(--sans-cjk);
+}
+
+html[lang="zh-Hant"] h1,
+html[lang="zh-Hant"] h2,
+html[lang="zh-Hant"] h3,
+html[lang="zh-Hant"] .brand,
+html[lang="zh-Hant"] .footer-brand {
+  font-family: "Songti TC", "Noto Serif TC", "PMingLiU", var(--serif);
+}
+
+html[lang="zh-Hant"] h1 {
+  font-size: clamp(3.3rem, 4.8vw, 5.8rem);
+  line-height: 1.05;
+}
+
+html[lang="zh-Hant"] h2 {
+  font-size: clamp(3rem, 4.4vw, 5rem);
+  line-height: 1.08;
+}
+
+html[lang="zh-Hant"] .button {
+  font-family: var(--sans-cjk);
+}
+
+html[lang="zh-Hant"] .audit-panel {
+  font-family: var(--mono);
 }
 
 .button {
@@ -395,7 +448,7 @@ h3 {
     grid-template-columns: 1fr auto;
   }
 
-  .site-header nav {
+  .site-header .primary-nav {
     order: 3;
     grid-column: 1 / -1;
     justify-content: space-between;
@@ -428,7 +481,7 @@ h3 {
     gap: 1.25rem;
   }
 
-  .site-header nav {
+  .site-header .primary-nav {
     gap: 1rem;
     overflow-x: auto;
     font-size: 0.82rem;
@@ -440,12 +493,28 @@ h3 {
     font-size: 0.78rem;
   }
 
+  .header-actions {
+    gap: 0.65rem;
+  }
+
+  .language-switcher {
+    font-size: 0.72rem;
+  }
+
   h1 {
     font-size: clamp(3.1rem, 16vw, 4.6rem);
   }
 
   h2 {
     font-size: clamp(2.8rem, 14vw, 4.25rem);
+  }
+
+  html[lang="zh-Hant"] h1 {
+    font-size: clamp(2.5rem, 11vw, 3.2rem);
+  }
+
+  html[lang="zh-Hant"] h2 {
+    font-size: clamp(2.5rem, 11vw, 3.5rem);
   }
 
   .hero {
