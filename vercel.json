@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "pnpm --dir apps/web install --no-frozen-lockfile",
-  "buildCommand": "pnpm --dir apps/web build",
+  "installCommand": "npm install --prefix apps/web",
+  "buildCommand": "npm run build --prefix apps/web",
   "outputDirectory": "apps/web/.next",
   "functions": {
     "api/index.py": {
