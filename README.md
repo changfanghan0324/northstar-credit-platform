@@ -1,5 +1,7 @@
 # Northstar Credit Platform
 
+**Language:** [English](README.md) | [繁體中文](README.zh-TW.md)
+
 A deterministic credit-analysis engine with Decimal-safe money, typed reason codes,
 currency guards, explicit confidence handling, and independently reproduced review
 evidence.
