@@ -1,8 +1,21 @@
-import type { Analysis, CaseEnvelope, CaseInput, CaseSummary, DemoCase, Money, RuntimeInfo } from "./types";
+import type {
+  Analysis,
+  CaseEnvelope,
+  CaseInput,
+  CaseSummary,
+  DemoCase,
+  Money,
+  RuntimeInfo,
+} from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-type ApiError = { code?: string; message?: string; remediation?: string; request_id?: string };
+type ApiError = {
+  code?: string;
+  message?: string;
+  remediation?: string;
+  request_id?: string;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -12,8 +25,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     let detail: ApiError = {};
-    try { detail = await response.json() as ApiError; } catch { /* non-JSON upstream error */ }
-    throw new Error([detail.message ?? `Request failed (${response.status})`, detail.remediation].filter(Boolean).join(" "));
+    try {
+      detail = (await response.json()) as ApiError;
+    } catch {
+      /* non-JSON upstream error */
+    }
+    throw new Error(
+      [
+        detail.message ?? `Request failed (${response.status})`,
+        detail.remediation,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -22,22 +46,52 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   runtime: () => request<RuntimeInfo>("/runtime"),
   demos: () => request<DemoCase[]>("/demo-cases"),
-  demoTemplate: (slug: string) => request<CaseInput>(`/demo-cases/${slug}/template`),
-  openDemo: (slug: string) => request<CaseEnvelope>(`/demo-cases/${slug}/open`, { method: "POST" }),
+  demoTemplate: (slug: string) =>
+    request<CaseInput>(`/demo-cases/${slug}/template`),
+  openDemo: (slug: string) =>
+    request<CaseEnvelope>(`/demo-cases/${slug}/open`, { method: "POST" }),
   listCases: () => request<CaseSummary[]>("/cases"),
   getCase: (id: string) => request<CaseEnvelope>(`/cases/${id}`),
-  createCase: (input: CaseInput) => request<CaseEnvelope>("/cases", { method: "POST", body: JSON.stringify(input) }),
-  validateInput: (input: CaseInput) => request<{valid: boolean; missing: string[]; warnings: string[]; estimated_confidence: number}>("/cases/validate-input", { method: "POST", body: JSON.stringify(input) }),
-  updateCase: (id: string, input: CaseInput) => request<CaseEnvelope>(`/cases/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  validate: (id: string) => request<{valid: boolean; missing: string[]; warnings: string[]; estimated_confidence: number}>(`/cases/${id}/validate`, { method: "POST" }),
-  analyze: (id: string) => request<Analysis>(`/cases/${id}/analyze`, { method: "POST" }),
-  duplicate: (id: string) => request<CaseEnvelope>(`/cases/${id}/duplicate`, { method: "POST" }),
-  archive: (id: string) => request<CaseEnvelope>(`/cases/${id}/archive`, { method: "POST" }),
+  createCase: (input: CaseInput) =>
+    request<CaseEnvelope>("/cases", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  validateInput: (input: CaseInput) =>
+    request<{
+      valid: boolean;
+      missing: string[];
+      warnings: string[];
+      estimated_confidence: number;
+    }>("/cases/validate-input", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateCase: (id: string, input: CaseInput) =>
+    request<CaseEnvelope>(`/cases/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  validate: (id: string) =>
+    request<{
+      valid: boolean;
+      missing: string[];
+      warnings: string[];
+      estimated_confidence: number;
+    }>(`/cases/${id}/validate`, { method: "POST" }),
+  analyze: (id: string) =>
+    request<Analysis>(`/cases/${id}/analyze`, { method: "POST" }),
+  duplicate: (id: string) =>
+    request<CaseEnvelope>(`/cases/${id}/duplicate`, { method: "POST" }),
+  archive: (id: string) =>
+    request<CaseEnvelope>(`/cases/${id}/archive`, { method: "POST" }),
   delete: (id: string) => request<void>(`/cases/${id}`, { method: "DELETE" }),
 };
 
 function grouping(value: bigint, locale: string): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
+    value,
+  );
 }
 
 export function money(value: Money, locale: string, compact = false): string {
@@ -57,8 +111,15 @@ export function money(value: Money, locale: string, compact = false): string {
   return `${sign}${symbol}${grouping(absolute, locale)}`;
 }
 
-export async function downloadMemo(id: string, locale: string, detailed = false): Promise<void> {
-  const response = await fetch(`${API_URL}/cases/${id}/memo.pdf?locale=${encodeURIComponent(locale)}&detail=${detailed ? "detailed" : "executive"}`, { credentials: "include" });
+export async function downloadMemo(
+  id: string,
+  locale: string,
+  detailed = false,
+): Promise<void> {
+  const response = await fetch(
+    `${API_URL}/cases/${id}/memo.pdf?locale=${encodeURIComponent(locale)}&detail=${detailed ? "detailed" : "executive"}`,
+    { credentials: "include" },
+  );
   if (!response.ok) throw new Error("Memo export failed");
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement("a");
