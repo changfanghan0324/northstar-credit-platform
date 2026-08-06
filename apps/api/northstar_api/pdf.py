@@ -1,15 +1,40 @@
-"""Deterministic localized PDF writer for executive and detailed credit memos."""
+"""Localized, paginated executive and detailed credit-memo PDFs."""
 
 from __future__ import annotations
 
 from decimal import Decimal
-from textwrap import wrap
+from io import BytesIO
+from pathlib import Path
+from xml.sax.saxutils import escape
 
 from northstar_credit_app.models import AnalysisResult, MoneyValue
+from reportlab.lib import colors  # type: ignore[import-untyped]
+from reportlab.lib.enums import TA_LEFT  # type: ignore[import-untyped]
+from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
+from reportlab.lib.styles import (  # type: ignore[import-untyped]
+    ParagraphStyle,
+    getSampleStyleSheet,
+)
+from reportlab.lib.units import inch  # type: ignore[import-untyped]
+from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
+from reportlab.pdfbase.ttfonts import TTFont  # type: ignore[import-untyped]
+from reportlab.platypus import (  # type: ignore[import-untyped]
+    CondPageBreak,
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
-
-def _escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+INK = colors.HexColor("#13243A")
+NAVY = colors.HexColor("#0D1D30")
+COPPER = colors.HexColor("#9A4F2C")
+MUTED = colors.HexColor("#627083")
+LINE = colors.HexColor("#D8DEE6")
+WASH = colors.HexColor("#F2F5F7")
 
 
 def _money(value: MoneyValue) -> str:
@@ -34,297 +59,453 @@ def _zh_condition(value: str) -> str:
         "Quarterly financial reporting within 45 days.": "每季財務報告應於 45 日內提交。",
         "Monthly liquidity reporting until downside headroom is restored.": "每月提交流動性報告，直到下行情境餘裕恢復。",
         "Perfect and maintain the proposed collateral security interest.": "完成並持續維持擬議擔保權益。",
-    }.get(value, value)
+    }.get(value, "依 API 核准條件執行並保留覆核證據。")
 
 
-def _zh_term(value: str) -> str:
+def _zh_status(value: str) -> str:
     return {
+        "available": "可使用",
+        "blocked": "已阻擋",
+        "legacy_snapshot": "舊版單期快照",
+        "strong": "強",
+        "adequate": "良好",
+        "moderate": "中等",
+        "weak": "偏弱",
+        "severe": "嚴重不足",
+        "high": "高",
+        "limited": "有限",
+        "low": "低",
         "term_loan": "定期貸款",
         "revolver": "循環信用額度",
         "asset_based": "資產基礎融資",
-        "leverage": "槓桿容量",
-        "dscr": "償債覆蓋容量",
-        "collateral": "擔保品容量",
-        "policy": "政策上限",
-        "valid": "有效",
-        "blocked": "已阻擋",
-        "policy_not_applicable": "政策不適用",
-        "pass": "通過",
-        "warning": "警示",
-        "hard_stop": "硬性停止",
-        "not_applicable": "不適用",
-        "quarterly": "每季",
-        "monthly": "每月",
-        "annual": "每年",
-        "base": "基準情境",
-        "downside": "下行情境",
-        "severe": "嚴重壓力情境",
-    }.get(value, value.replace("_", " "))
-
-
-def _zh_policy_label(value: str) -> str:
-    return {
-        "Maximum total leverage": "最高總槓桿",
-        "Minimum interest coverage": "最低利息保障倍數",
-        "Minimum DSCR": "最低償債覆蓋倍數",
-        "Maximum maturity": "最長到期年限",
-        "Minimum liquidity months": "最低流動性月數",
-        "Allowed currency": "允許幣別",
-        "Maximum exposure": "最高曝險",
-        "Maximum eligible grade": "最高可核准評等",
-        "Minimum collateral coverage": "最低擔保覆蓋率",
-        "Maximum EBITDA adjustment": "最高 EBITDA 調整幅度",
-        "Minimum data confidence": "最低資料信心",
-        "Allowed facility type": "允許額度類型",
     }.get(value, value)
 
 
-def _localized_lines(
-    result: AnalysisResult, *, locale: str, detailed: bool
-) -> list[str]:
-    zh = locale.lower().startswith("zh")
+ZH_TITLES = {
+    "executive_recommendation": "執行建議",
+    "borrower_overview": "借款人概況",
+    "ownership_and_management": "所有權與管理",
+    "business_model": "商業模式",
+    "industry_risk": "產業風險",
+    "loan_request": "貸款申請",
+    "facility_structure": "授信結構",
+    "loan_purpose": "貸款用途",
+    "sources_and_uses": "資金來源與用途",
+    "primary_repayment_source": "主要還款來源",
+    "secondary_repayment_source": "次要還款來源",
+    "historical_financial_performance": "歷史財務表現",
+    "financial_adjustments": "財務調整",
+    "capital_structure": "資本結構",
+    "debt_maturity_schedule": "債務到期表",
+    "key_ratios": "關鍵比率",
+    "obligor_grade": "債務人評等",
+    "facility_protection": "設施保障",
+    "debt_capacity": "債務容量",
+    "base_case": "基準情境",
+    "downside_case": "下行情境",
+    "severe_case": "嚴重壓力情境",
+    "reverse_stress": "反向壓力測試",
+    "collateral_or_borrowing_base": "擔保品或借款基礎",
+    "indicative_pricing": "示意定價",
+    "covenants": "財務契約",
+    "policy_exceptions": "政策例外",
+    "conditions_precedent": "先決條件",
+    "monitoring": "監控",
+    "data_limitations": "資料限制",
+    "analyst_sign_off": "分析師簽核",
+    "reviewer_sign_off": "覆核人簽核",
+}
+
+
+def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
+    base = next(item for item in result.scenarios if item.name == "base")
     downside = next(item for item in result.scenarios if item.name == "downside")
-    leverage = result.metrics["gross_leverage"]
-    dscr = result.metrics["dscr"]
-    coverage = result.metrics["interest_coverage"]
-    if zh:
-        grade = (
-            "未完成" if result.scorecard.grade is None else str(result.scorecard.grade)
-        )
-        grade_label = (
-            "已阻擋，請補齊關鍵輸入"
-            if result.scorecard.grade is None
-            else result.scorecard.grade_label
-        )
-        repayment = (
+    severe = next(item for item in result.scenarios if item.name == "severe")
+    borrowing = (
+        _money(result.borrowing_base.borrowing_base)
+        if result.borrowing_base.borrowing_base is not None
+        else "不適用或因缺少輸入而阻擋"
+    )
+    return {
+        "executive_recommendation": [
+            f"建議：{_zh_outcome(result.decision.outcome)}；申請額 {_money(result.capacity.requested)}；可支援額度 {_money(result.capacity.recommended)}；債務人評等 {result.scorecard.grade or '已阻擋'}。"
+        ],
+        "borrower_overview": [
+            f"借款人：{result.case.borrower.legal_name}。業務、產業與所在地資料已保留於合成案件輸入。"
+        ],
+        "ownership_and_management": [
+            "合成案件未提供所有權明細；管理評估以營運風險證據紀錄為基礎。"
+        ],
+        "business_model": ["合成案件已記錄業務模式說明；使用前仍須以獨立文件驗證。"],
+        "industry_risk": [
+            f"已記錄 {len(result.case.business_risk.risks)} 項主要風險及 {len(result.case.business_risk.strengths)} 項主要優勢。"
+        ],
+        "loan_request": [f"借款人申請 {_money(result.case.request.amount)}。"],
+        "facility_structure": [
+            f"額度類型 {_zh_status(result.decision.facility_type)}；到期 {result.decision.maturity_years} 年；攤還 {result.decision.amortization_years} 年。"
+        ],
+        "loan_purpose": [
+            "貸款用途已記錄於合成案件輸入；實際使用前須取得並驗證支持文件。"
+        ],
+        "sources_and_uses": [
+            f"擬議貸方資金來源 {_money(result.case.request.amount)}；用途依借款人輸入。未提供其他資金來源或用途。"
+        ],
+        "primary_repayment_source": [
             "營運現金流"
             if result.decision.primary_repayment_source == "Operating cash flow"
-            else result.decision.primary_repayment_source
-        )
-        lines = [
-            "北極星授信備忘錄",
-            result.case.borrower.legal_name,
-            f"授信決策：{_zh_outcome(result.decision.outcome)}",
-            f"內部評等：{grade}（{grade_label}）",
-            f"申請額：{_money(result.capacity.requested)}",
-            f"建議額度：{_money(result.capacity.recommended)}",
-            f"總槓桿：{leverage.value or '不具意義'} 倍",
-            f"DSCR：{dscr.value or '不具意義'} 倍",
-            f"利息保障倍數：{coverage.value or '不具意義'} 倍",
-            f"下行情境首次違約年度：{downside.first_breach_year or '三年內無'}",
-            f"主要還款來源：{repayment}",
-            "",
-            "主要優勢",
-            *result.case.business_risk.strengths,
-            "",
-            "主要風險",
-            *result.case.business_risk.risks,
-            "",
-            "建議條件與財務契約",
-            *[_zh_condition(item) for item in result.decision.conditions],
-            "",
-            "限制",
-            "合成示範資料，不代表真實資料品質評估。",
-            "僅供教育與說明用途，不構成授信、投資、會計或法律建議。",
-        ]
-    else:
-        lines = [
-            "NORTHSTAR CREDIT MEMORANDUM",
-            result.case.borrower.legal_name,
-            f"Decision: {result.decision.outcome}",
-            f"Internal grade: {result.scorecard.grade or 'Blocked'} ({result.scorecard.grade_label})",
-            f"Requested: {_money(result.capacity.requested)}",
-            f"Recommended: {_money(result.capacity.recommended)}",
-            f"Gross leverage: {leverage.value or 'Not meaningful'}x",
-            f"DSCR: {dscr.value or 'Not meaningful'}x",
-            f"Interest coverage: {coverage.value or 'Not meaningful'}x",
-            f"Downside first breach year: {downside.first_breach_year or 'none within three years'}",
-            f"Primary repayment: {result.decision.primary_repayment_source}",
-            "",
-            "KEY STRENGTHS",
-            *result.case.business_risk.strengths,
-            "",
-            "KEY RISKS",
-            *result.case.business_risk.risks,
-            "",
-            "PROPOSED TERMS AND COVENANTS",
-            *result.decision.conditions,
-            "",
-            "LIMITATIONS",
-            "Synthetic demonstration — not a real data-quality assessment.",
-            "Educational and illustrative only; not lending, investment, accounting, or legal advice.",
-        ]
-    if detailed:
-        if zh:
-            lines.extend(
-                [
-                    "",
-                    "借款人概況",
-                    result.case.borrower.description,
-                    f"產業：{result.case.borrower.industry}",
-                    f"總部：{result.case.borrower.headquarters}",
-                    "",
-                    "申請與結構",
-                    f"用途：{result.case.request.purpose}",
-                    f"額度類型：{_zh_term(result.decision.facility_type)}",
-                    f"到期／攤還：{result.decision.maturity_years}／{result.decision.amortization_years} 年",
-                    f"擔保：{result.decision.collateral}",
-                    f"保證：{result.decision.guarantee}",
-                    "",
-                    "EBITDA 調整與財務基礎",
-                    f"正向 EBITDA 調整：{_money(result.case.financials.positive_ebitda_adjustments)}",
-                    f"負向 EBITDA 調整：{_money(result.case.financials.negative_ebitda_adjustments)}",
-                    f"維持性資本支出：{_money(result.case.financials.maintenance_capex)}",
-                    f"營運資金增加：{_money(result.case.financials.working_capital_increase)}",
-                    "",
-                    "既有債務明細",
-                    *(
-                        [
-                            f"{item.name}：本金 {_money(item.principal)}，利率 {item.annual_rate}，"
-                            f"攤還 {_money(item.scheduled_amortization)}，第 {item.maturity_year} 年到期"
-                            for item in result.case.debt_instruments
-                        ]
-                        or ["未提供逐筆債務明細；信心分數已反映此限制。"]
-                    ),
-                    "",
-                    "容量與政策",
-                    f"約束條件：{'、'.join(_zh_term(item) for item in result.capacity.binding_constraints)}",
-                    *[
-                        f"{_zh_policy_label(check.label)}：{check.actual}／{check.threshold}（{_zh_term(check.status)}）"
-                        for check in result.policy_checks
-                    ],
-                    "",
-                    "壓力測試與財務契約",
-                    f"反向壓力營收跌幅：{result.reverse_stress.dscr_minimum_revenue_decline}%",
-                    f"求解結果：{'已收斂' if result.reverse_stress.converged else '未收斂'}，迭代 {result.reverse_stress.iterations} 次",
-                    *[
-                        f"{_zh_term(scenario.name)}第 {year.year} 年：期初債務 {_money(year.beginning_debt)}，"
-                        f"期末債務 {_money(year.ending_debt)}，DSCR {year.dscr}，"
-                        f"現金缺口 {_money(year.cash_shortfall)}"
-                        for scenario in result.scenarios
-                        for year in scenario.years
-                    ],
-                    *[
-                        f"{item.name}：{item.actual}／{item.threshold}（{_zh_term(item.status)}，{_zh_term(item.frequency)}）"
-                        for item in result.covenants
-                    ],
-                    "",
-                    "監控與例外",
-                    *(
-                        result.decision.monitoring
-                        or ["依核准條件與財務契約頻率持續監控。"]
-                    ),
-                    *(
-                        [
-                            f"政策例外：{item}"
-                            for item in result.decision.policy_exceptions
-                        ]
-                        or ["政策例外：無。"]
-                    ),
-                    "",
-                    "資料品質、限制與簽核",
-                    f"資料信心：{result.scorecard.confidence_score}/100（{result.scorecard.confidence}）",
-                    *result.scorecard.confidence_penalties,
-                    "本備忘錄使用合成資料，未執行真實世界文件、法規、制裁、詐欺或法律盡職調查。",
-                    "模型結果須由具授權的授信人員獨立覆核後方可使用。",
-                    "分析人員：________________  日期：________________",
-                    "核准人員：________________  日期：________________",
-                ]
+            else "依案件輸入之主要還款來源。"
+        ],
+        "secondary_repayment_source": [
+            "合格擔保品與企業價值支援；分析未假設可成功再融資。"
+        ],
+        "historical_financial_performance": [
+            f"營收 {_money(result.case.financials.revenue)}；報告 EBITDA {_money(result.adjustments.reported_ebitda)}；調整後 EBITDA {_money(result.adjustments.adjusted_ebitda)}。",
+            f"LTM 狀態：{_zh_status(result.financial_spreading.ltm_status)}。",
+        ],
+        "financial_adjustments": [
+            f"已核准調整 {_money(result.adjustments.approved_adjustment)}；正向調整占比 {Decimal(result.adjustments.positive_adjustment_pct) * 100:.2f}%。"
+        ],
+        "capital_structure": [
+            f"非受限現金 {_money(result.case.financials.unrestricted_cash)}；權益 {_money(result.case.financials.equity)}。"
+        ],
+        "debt_maturity_schedule": [
+            f"已提供 {len(result.case.debt_instruments)} 項逐筆債務工具。"
+            if result.case.debt_instruments
+            else "未提供逐筆債務到期表。"
+        ],
+        "key_ratios": [
+            f"總槓桿 {result.metrics['gross_leverage'].value or '不具意義'} 倍；利息保障 {result.metrics['interest_coverage'].value or '不具意義'} 倍；DSCR {result.metrics['dscr'].value or '不具意義'} 倍。"
+        ],
+        "obligor_grade": [
+            f"分數 {result.scorecard.score or '已阻擋'}；評等 {result.scorecard.grade or '已阻擋'}；資料信心 {result.scorecard.confidence_score}/100。設施保障不會改變債務人評等。"
+        ],
+        "facility_protection": [
+            f"設施保障分數 {result.facility_protection.score}；類別 {_zh_status(result.facility_protection.category)}；預期回收類別 {_zh_status(result.facility_protection.expected_recovery_category)}。"
+        ],
+        "debt_capacity": [
+            f"申請 {_money(result.capacity.requested)}；建議 {_money(result.capacity.recommended)}；約束條件數 {len(result.capacity.binding_constraints)}。"
+        ],
+        "base_case": [
+            f"首次財務契約違約年度：{base.first_breach_year or '三年內無'}。"
+        ],
+        "downside_case": [
+            f"首次違約年度：{downside.first_breach_year or '三年內無'}；流動性耗盡年度：{downside.liquidity_exhaustion_year or '三年內無'}。"
+        ],
+        "severe_case": [
+            f"首次違約年度：{severe.first_breach_year or '三年內無'}；流動性耗盡年度：{severe.liquidity_exhaustion_year or '三年內無'}。"
+        ],
+        "reverse_stress": [
+            f"六個求解器中有 {sum(item.converged for item in result.reverse_stress.solvers)} 個已收斂；未收斂結果不顯示數值。",
+            *[
+                f"求解器 {index + 1}：{'已收斂' if item.converged else '未收斂'}；迭代 {item.iterations} 次；殘差 {item.residual or '無'}。"
+                for index, item in enumerate(result.reverse_stress.solvers)
+            ],
+        ],
+        "collateral_or_borrowing_base": [
+            f"借款基礎：{borrowing}。預支率依版本化示意政策。"
+        ],
+        "indicative_pricing": [
+            f"參考基準利率 {Decimal(result.pricing.reference_base_rate) * 100:.2f}%；風險利差 {result.pricing.risk_grade_spread_bps} bps；示意全包利率 {Decimal(result.pricing.indicative_all_in_rate) * 100:.2f}%。",
+            "僅供教育用途，不代表即時市場報價、銀行承諾或授信建議。",
+        ],
+        "covenants": [
+            f"共產生 {len(result.covenants)} 項維持性、發生性或報告型財務契約。"
+        ],
+        "policy_exceptions": [
+            f"共有 {len(result.decision.policy_exceptions)} 項政策警示需要授權處理。"
+            if result.decision.policy_exceptions
+            else "未識別政策例外。"
+        ],
+        "conditions_precedent": [
+            _zh_condition(item) for item in result.decision.conditions
+        ],
+        "monitoring": [
+            "每季財務報表、年度財務契約遵循證明，以及重大不利事件即時通知。"
+        ],
+        "data_limitations": [
+            "本案件使用合成資料，未執行真實文件、法規、制裁、詐欺或法律盡職調查。僅供教育用途。",
+            "目前財務展開仍有資料完整性或調節限制；詳細狀態以 API 輸出為準。",
+        ],
+        "analyst_sign_off": [
+            "分析人員：____________________",
+            f"資料基準日：{result.case.data_as_of}",
+        ],
+        "reviewer_sign_off": [
+            "覆核人員：____________________",
+            f"模型 {result.engine_version}；政策 {result.policy_version}。",
+        ],
+    }
+
+
+def _styles(zh: bool) -> dict[str, ParagraphStyle]:
+    if zh:
+        try:
+            pdfmetrics.getFont("NotoSansTC")
+        except KeyError:
+            font_path = (
+                Path(__file__).parent / "assets" / "fonts" / "NotoSansTC-Regular.ttf"
             )
-        else:
-            for heading, paragraphs in result.memo_sections.items():
-                lines.extend(["", heading.replace("_", " ").upper(), *paragraphs])
-        lines.extend(
+            pdfmetrics.registerFont(TTFont("NotoSansTC", str(font_path)))
+        body_font = title_font = "NotoSansTC"
+    else:
+        body_font, title_font = "Helvetica", "Times-Roman"
+    base = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "MemoTitle",
+            parent=base["Title"],
+            fontName=title_font,
+            fontSize=20,
+            leading=24,
+            textColor=NAVY,
+            alignment=TA_LEFT,
+            spaceAfter=8,
+        ),
+        "borrower": ParagraphStyle(
+            "Borrower",
+            parent=base["Heading2"],
+            fontName=title_font,
+            fontSize=14,
+            leading=18,
+            textColor=INK,
+            spaceAfter=12,
+            wordWrap="CJK" if zh else None,
+        ),
+        "heading": ParagraphStyle(
+            "Section",
+            parent=base["Heading2"],
+            fontName=title_font,
+            fontSize=11,
+            leading=14,
+            textColor=COPPER,
+            spaceBefore=8,
+            spaceAfter=4,
+            keepWithNext=True,
+        ),
+        "body": ParagraphStyle(
+            "MemoBody",
+            parent=base["BodyText"],
+            fontName=body_font,
+            fontSize=8.2,
+            leading=11.2,
+            textColor=INK,
+            spaceAfter=4,
+            wordWrap="CJK" if zh else None,
+        ),
+        "small": ParagraphStyle(
+            "Small",
+            parent=base["BodyText"],
+            fontName=body_font,
+            fontSize=6.8,
+            leading=9,
+            textColor=MUTED,
+            wordWrap="CJK" if zh else None,
+        ),
+        "decision": ParagraphStyle(
+            "Decision",
+            parent=base["Heading1"],
+            fontName=title_font,
+            fontSize=16,
+            leading=19,
+            textColor=colors.white,
+            spaceAfter=0,
+            wordWrap="CJK" if zh else None,
+        ),
+    }
+
+
+def _paragraph(text: str, style: ParagraphStyle) -> Paragraph:
+    return Paragraph(escape(str(text)).replace("\n", "<br/>"), style)
+
+
+def _footer(canvas: object, doc: SimpleDocTemplate, *, zh: bool, font: str) -> None:
+    canvas.saveState()  # type: ignore[attr-defined]
+    canvas.setStrokeColor(LINE)  # type: ignore[attr-defined]
+    canvas.line(doc.leftMargin, 0.45 * inch, letter[0] - doc.rightMargin, 0.45 * inch)  # type: ignore[attr-defined]
+    canvas.setFont(font, 6.5)  # type: ignore[attr-defined]
+    canvas.setFillColor(MUTED)  # type: ignore[attr-defined]
+    label = f"第 {doc.page} 頁" if zh else f"Page {doc.page}"
+    canvas.drawRightString(letter[0] - doc.rightMargin, 0.28 * inch, label)  # type: ignore[attr-defined]
+    canvas.drawString(doc.leftMargin, 0.28 * inch, "Northstar Credit Platform")  # type: ignore[attr-defined]
+    canvas.restoreState()  # type: ignore[attr-defined]
+
+
+def _metric_table(
+    result: AnalysisResult, styles: dict[str, ParagraphStyle], zh: bool
+) -> Table:
+    rows = [
+        [
+            "申請額" if zh else "Requested",
+            _money(result.capacity.requested),
+            "建議額度" if zh else "Recommended",
+            _money(result.capacity.recommended),
+        ],
+        [
+            "債務人評等" if zh else "Obligor grade",
+            str(result.scorecard.grade or ("已阻擋" if zh else "Blocked")),
+            "設施保障" if zh else "Facility protection",
+            f"{result.facility_protection.score} / 100",
+        ],
+        [
+            "總槓桿" if zh else "Gross leverage",
+            f"{result.metrics['gross_leverage'].value or ('不具意義' if zh else 'N/M')}x",
+            "DSCR",
+            f"{result.metrics['dscr'].value or ('不具意義' if zh else 'N/M')}x",
+        ],
+    ]
+    table = Table(
+        [[_paragraph(value, styles["small"]) for value in row] for row in rows],
+        colWidths=[1.05 * inch, 1.62 * inch, 1.05 * inch, 1.62 * inch],
+    )
+    table.setStyle(
+        TableStyle(
             [
-                "",
-                f"Input hash: {result.input_hash}",
-                f"Policy: {result.policy_version} / {result.policy_hash[:12]}",
-                f"Model: {result.engine_version}",
+                ("GRID", (0, 0), (-1, -1), 0.35, LINE),
+                ("BACKGROUND", (0, 0), (-1, -1), WASH),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]
         )
-    return lines
-
-
-def _text_stream(lines: list[str], *, zh: bool) -> bytes:
-    commands = ["BT", "/F1 9 Tf", "46 754 Td", "11 TL"]
-    for index, line in enumerate(lines):
-        if index:
-            commands.append("T*")
-        if zh:
-            commands.append(f"<{line.encode('utf-16-be').hex().upper()}> Tj")
-        else:
-            commands.append(f"({_escape(line)}) Tj")
-    commands.append("ET")
-    return "\n".join(commands).encode("cp1252", errors="replace")
+    )
+    return table
 
 
 def render_memo_pdf(
     result: AnalysisResult, *, locale: str = "en", detailed: bool = False
 ) -> bytes:
     zh = locale.lower().startswith("zh")
-    source_lines = _localized_lines(result, locale=locale, detailed=detailed)
-    lines: list[str] = []
-    for line in source_lines:
-        if not line:
-            lines.append("")
-            continue
-        width = 48 if zh else 92
-        lines.extend(wrap(line, width=width, break_long_words=True) or [""])
-    chunks = [lines[index : index + 62] for index in range(0, len(lines), 62)]
-    if not chunks:
-        chunks = [[""]]
-
-    page_numbers = list(range(3, 3 + len(chunks)))
-    content_numbers = list(range(3 + len(chunks), 3 + (2 * len(chunks))))
-    font_number = 3 + (2 * len(chunks))
-    cid_font_number = font_number + 1
-    font = (
-        f"<< /Type /Font /Subtype /Type0 /BaseFont /MSung-Light /Encoding /UniCNS-UCS2-H /DescendantFonts [{cid_font_number} 0 R] >>".encode()
-        if zh
-        else b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+    styles = _styles(zh)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.62 * inch,
+        rightMargin=0.62 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.6 * inch,
+        title=("北極星授信備忘錄" if zh else "Northstar Credit Memorandum"),
+        author="Northstar Credit Platform",
+        subject="Synthetic educational corporate-credit analysis",
+        pdfVersion=(1, 4),
     )
-    objects: list[bytes] = [
-        b"<< /Type /Catalog /Pages 2 0 R >>",
-        (
-            f"<< /Type /Pages /Kids [{' '.join(f'{number} 0 R' for number in page_numbers)}] "
-            f"/Count {len(page_numbers)} >>"
-        ).encode(),
+    story: list[object] = [
+        _paragraph(
+            "北極星授信備忘錄" if zh else "NORTHSTAR CREDIT MEMORANDUM", styles["title"]
+        ),
+        _paragraph(result.case.borrower.legal_name, styles["borrower"]),
     ]
-    for content_number in content_numbers:
-        objects.append(
-            (
-                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                f"/Resources << /Font << /F1 {font_number} 0 R >> >> "
-                f"/Contents {content_number} 0 R >>"
-            ).encode()
-        )
-    for chunk in chunks:
-        stream = _text_stream(chunk, zh=zh)
-        objects.append(
-            b"<< /Length "
-            + str(len(stream)).encode()
-            + b" >>\nstream\n"
-            + stream
-            + b"\nendstream"
-        )
-    objects.append(font)
-    if zh:
-        objects.append(
-            b"<< /Type /Font /Subtype /CIDFontType0 /BaseFont /MSung-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (CNS1) /Supplement 4 >> >>"
-        )
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for number, obj in enumerate(objects, start=1):
-        offsets.append(len(pdf))
-        pdf.extend(f"{number} 0 obj\n".encode())
-        pdf.extend(obj)
-        pdf.extend(b"\nendobj\n")
-    xref = len(pdf)
-    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode())
-    pdf.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        pdf.extend(f"{offset:010d} 00000 n \n".encode())
-    pdf.extend(
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    decision_text = (
+        _zh_outcome(result.decision.outcome) if zh else result.decision.outcome
     )
-    return bytes(pdf)
+    decision_box = Table(
+        [[_paragraph(decision_text, styles["decision"])]], colWidths=[7.25 * inch]
+    )
+    decision_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                ("TOPPADDING", (0, 0), (-1, -1), 11),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
+            ]
+        )
+    )
+    story.extend(
+        [
+            decision_box,
+            Spacer(1, 0.14 * inch),
+            _metric_table(result, styles, zh),
+            Spacer(1, 0.12 * inch),
+        ]
+    )
+
+    if not detailed:
+        strengths = (
+            "；".join(result.case.business_risk.strengths[:3])
+            if zh
+            else "; ".join(result.case.business_risk.strengths[:3])
+        )
+        risks = (
+            "；".join(result.case.business_risk.risks[:3])
+            if zh
+            else "; ".join(result.case.business_risk.risks[:3])
+        )
+        compact = [
+            (
+                "執行建議" if zh else "Executive recommendation",
+                f"{_zh_outcome(result.decision.outcome) if zh else result.decision.outcome}. {('建議額度' if zh else 'Recommended exposure')}: {_money(result.capacity.recommended)}.",
+            ),
+            (
+                "主要優勢" if zh else "Key strengths",
+                strengths or ("未提供。" if zh else "Not supplied."),
+            ),
+            (
+                "主要風險" if zh else "Key risks",
+                risks or ("未提供。" if zh else "Not supplied."),
+            ),
+            (
+                "核准條件" if zh else "Conditions",
+                " ".join(_zh_condition(item) for item in result.decision.conditions)
+                if zh
+                else " ".join(result.decision.conditions),
+            ),
+            (
+                "限制" if zh else "Limitations",
+                "合成示範資料；僅供教育用途，不構成授信、投資、會計或法律建議。"
+                if zh
+                else "Synthetic demonstration data. Educational and illustrative only; not lending, investment, accounting, or legal advice.",
+            ),
+        ]
+        for title, body in compact:
+            story.extend(
+                [_paragraph(title, styles["heading"]), _paragraph(body, styles["body"])]
+            )
+        story.append(Spacer(1, 0.05 * inch))
+        story.append(
+            _paragraph(
+                f"{('資料基準日' if zh else 'Data as of')}: {result.case.data_as_of} | {('模型' if zh else 'Model')}: {result.engine_version} | {('政策' if zh else 'Policy')}: {result.policy_version}",
+                styles["small"],
+            )
+        )
+    else:
+        story.extend(
+            [
+                PageBreak(),
+                _paragraph(
+                    "詳細授信備忘錄" if zh else "DETAILED CREDIT MEMORANDUM",
+                    styles["title"],
+                ),
+                _paragraph(
+                    f"{('資料基準日' if zh else 'Data as of')}: {result.case.data_as_of}\n{('計算時間' if zh else 'Calculated')}: {result.calculated_at}\n{('模型' if zh else 'Model')}: {result.engine_version}\n{('政策' if zh else 'Policy')}: {result.policy_version} / {result.policy_hash[:12]}\n{('輸入雜湊' if zh else 'Input hash')}: {result.input_hash}",
+                    styles["small"],
+                ),
+                Spacer(1, 0.14 * inch),
+            ]
+        )
+        sections = _zh_sections(result) if zh else result.memo_sections
+        for index, (key, paragraphs) in enumerate(sections.items(), start=1):
+            title = (
+                ZH_TITLES.get(key, key.replace("_", " "))
+                if zh
+                else key.replace("_", " ").title()
+            )
+            story.append(CondPageBreak(0.65 * inch))
+            block: list[object] = [
+                _paragraph(f"{index:02d}. {title}", styles["heading"])
+            ]
+            for paragraph in paragraphs or ["未提供。" if zh else "Not supplied."]:
+                block.append(_paragraph(paragraph, styles["body"]))
+            story.append(KeepTogether(block[:2]))
+            story.extend(block[2:])
+
+    font = "NotoSansTC" if zh else "Helvetica"
+    doc.build(
+        story,
+        onFirstPage=lambda canvas, built: _footer(canvas, built, zh=zh, font=font),
+        onLaterPages=lambda canvas, built: _footer(canvas, built, zh=zh, font=font),
+    )
+    return buffer.getvalue()

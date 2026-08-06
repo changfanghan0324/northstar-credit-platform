@@ -6,9 +6,9 @@
 
 Northstar is a full-stack, educational corporate-credit underwriting workspace. It
 connects normalized borrower and facility inputs to financial ratios, a transparent
-credit score and grade, debt capacity, three-year stress scenarios, covenant
-headroom, a rule-based lending recommendation, proposed terms, and a deterministic
-credit-memo PDF.
+credit score and grade, debt capacity, independent facility protection, an optional
+borrowing base, three-year stress scenarios, six numerical reverse-stress solvers,
+transparent indicative pricing, proposed terms, and localized credit-memo PDFs.
 
 ## Public product
 
@@ -17,10 +17,15 @@ credit-memo PDF.
 - Traditional Chinese: `/zh-TW/`
 - Three synthetic cases: stable manufacturer, cyclical distributor, and software
   services
-- Workspace: Overview, Inputs, Financials, Debt Capacity, Risk, Stress & Covenants,
-  Decision & Terms, and Credit Memo
+- Workspace: Overview, Inputs, Financials, Debt Capacity, Facility Protection, Risk,
+  Stress & Covenants, Decision & Terms, and Credit Memo
 - Modes: Guided and Analyst are two presentations of the same persisted inputs and
   calculated outputs
+- Analyst entry supports multi-period income statements, balance sheets, cash-flow
+  statements, CSV templates, Excel paste, period copy/remove, reconciliation, and
+  explicit LTM methodology.
+- Normalization adjustments and qualitative business-risk factors require rationale,
+  evidence, source, and review state before they can support a final grade.
 
 All displayed borrower data is synthetic. Northstar is an educational demonstration,
 not a bank, rating agency, credit opinion, or lending commitment.
@@ -43,11 +48,14 @@ Decimal-safe credit_engine
 SQLAlchemy repository + Alembic migrations
 ```
 
-Production accepts a PostgreSQL connection through `DATABASE_URL`. Local and
-ephemeral demonstration environments use a SQLite fallback in `/tmp`; public cases
-are anonymous and session-scoped. The `/runtime` endpoint and case-list banner state
-whether persistence is durable or temporary. Monetary values cross every boundary as
-integer minor units, while ratio values are serialized as decimal strings.
+Northstar intentionally operates in **Portfolio Demo Mode (Mode A)**. A PostgreSQL
+connection can be supplied through `DATABASE_URL`, while local and ephemeral demo
+environments use a SQLite fallback in `/tmp`. Public cases are synthetic,
+anonymous, session-scoped, quota-limited, and expire after seven days. The `/runtime`
+endpoint states these limitations. Monetary values use exact integer minor units,
+with a contract and browser parser that reject values outside JavaScript's safe
+integer range, invalid grouping, scientific notation, and excess precision. Ratio
+values are serialized as decimal strings.
 
 ## Run locally
 
@@ -75,12 +83,13 @@ The development web app uses `http://127.0.0.1:8000` through
 PYTHON_BIN=.venv-rebuilt/bin/python ./scripts/verify
 ```
 
-The current delivery passes 79 Python tests with 99.54% branch-aware engine
-coverage, Ruff lint and formatting, strict Mypy, strict TypeScript, ESLint, and a
-Next.js production build. Browser QA covers the English and Traditional Chinese
-homepages, a 390px mobile viewport, sample-case opening, custom-case creation,
-session isolation, Guided/Analyst value equality, stress and covenant rendering, and
-memo PDF generation.
+Verification covers Python unit/integration tests with branch-aware application
+coverage, Ruff lint and formatting, strict Mypy, strict TypeScript, ESLint, a Next.js
+production build, Playwright desktop/mobile flows, and axe WCAG checks. Browser QA
+covers English and Traditional Chinese, Guided/Analyst workflows, multi-period
+spreading, facility protection, solver metadata, keyboard navigation, localized
+error routes, and executive/detailed memo PDFs. PDF QA renders every page to images
+and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 
 ## Documentation
 
@@ -93,6 +102,10 @@ memo PDF generation.
 - [Independent Claude review](docs/collaboration/corrective-debate-claude.md)
 - [v3 corrective audit](docs/audits/pre-correction-audit.md)
 - [v3 Claude review and Codex response](docs/collaboration/v3-claude-opus-5-review.md)
+- [Final product audit](docs/audits/final-product-audit.md)
+- [Final model audit](docs/audits/final-model-audit.md)
+- [Final UX audit](docs/audits/final-ux-audit.md)
+- [Final Claude Opus 5 High review](docs/collaboration/final-review-claude-opus-5.md)
 
 The independent collaboration record is repository evidence only; it is deliberately
 not used as a product-interface marketing claim.

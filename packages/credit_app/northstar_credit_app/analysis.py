@@ -31,8 +31,10 @@ from credit_engine import (
 from credit_engine.types import RatioResult, RatioStatus
 from northstar_policy import CreditPolicy, load_policy
 
+from .facility import assess_facility, calculate_borrowing_base, calculate_pricing
 from .models import (
     AnalysisResult,
+    BorrowingBaseView,
     CapacityConstraintView,
     CapacityView,
     CaseInput,
@@ -47,10 +49,20 @@ from .models import (
     ScorecardView,
     ScoreComponentView,
 )
+from .solvers import solve_reverse_stress
+from .spreading import analyze_spreading, summarize_adjustments
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
 HUNDRED = Decimal(100)
+BusinessRiskKey = Literal[
+    "industry",
+    "competitive_position",
+    "customer_concentration",
+    "diversification",
+    "management_policy",
+    "governance_event",
+]
 
 
 def _money(value: MoneyValue) -> Money:
@@ -180,6 +192,18 @@ def _scorecard(
         for key, value in critical.items()
         if value is None or results[key].is_adverse_nm
     ]
+    business_keys: tuple[BusinessRiskKey, ...] = (
+        "industry",
+        "competitive_position",
+        "customer_concentration",
+        "diversification",
+        "management_policy",
+        "governance_event",
+    )
+    missing_evidence = [
+        key for key in business_keys if key not in case.business_risk.factor_evidence
+    ]
+    blocked_keys.extend(missing_evidence)
     leverage_score, leverage_band = policy.score_for(
         "leverage", leverage_value if leverage_value is not None else Decimal("999")
     )
@@ -220,22 +244,32 @@ def _scorecard(
         ),
     }
     business = case.business_risk
-    for key in (
-        "industry",
-        "competitive_position",
-        "customer_concentration",
-        "diversification",
-        "management_policy",
-        "governance_event",
-    ):
-        direct[key] = (getattr(business, key), "Analyst assessment")
+    for risk_key in business_keys:
+        factor_evidence = business.factor_evidence.get(risk_key)
+        direct[risk_key] = (
+            getattr(business, risk_key)
+            if factor_evidence is None
+            else factor_evidence.score,
+            "Evidence required"
+            if factor_evidence is None
+            else factor_evidence.band.replace("_", " ").title(),
+        )
     components = []
-    for key, (score, band) in direct.items():
-        piece = _score_piece(key, score, weight_map[key], band)
-        if key in blocked_keys:
+    for component_key, (score, band) in direct.items():
+        piece = _score_piece(component_key, score, weight_map[component_key], band)
+        factor_evidence = (
+            case.business_risk.factor_evidence.get(component_key)
+            if component_key in business_keys
+            else None
+        )
+        if factor_evidence is not None:
+            piece = piece.model_copy(update={"evidence": factor_evidence.evidence})
+        if component_key in blocked_keys:
             piece = piece.model_copy(
                 update={
                     "status": "blocked",
+                    "score": "0.00",
+                    "contribution": "0.00",
                     "evidence": "Critical input is missing or invalid; no numeric score was inferred.",
                 }
             )
@@ -362,6 +396,7 @@ def _capacity(
     earnings: Money,
     cash_available: Money,
     existing_service: Money,
+    borrowing_base: BorrowingBaseView,
 ) -> CapacityView:
     request = _money(case.request.amount)
     maximum_debt = Decimal(earnings.amount_minor) * policy.maximum_leverage
@@ -382,7 +417,13 @@ def _capacity(
         "dscr_capacity": dscr_minor,
         "policy_capacity": policy.policy_capacity_minor,
     }
-    if collateral_applicable:
+    if case.request.facility_type == "asset_based":
+        candidates["collateral_capacity"] = (
+            0
+            if borrowing_base.borrowing_base is None
+            else borrowing_base.borrowing_base.amount_minor
+        )
+    elif collateral_applicable:
         candidates["collateral_capacity"] = (
             case.financials.collateral_capacity.amount_minor
         )
@@ -396,8 +437,19 @@ def _capacity(
             label=key.replace("_", " ").title(),
             amount=_view(_new_money(value, request)),
             applicable=True,
-            status="valid",
-            reason="Calculated from the request, financial inputs, and active policy.",
+            status=(
+                "blocked"
+                if key == "collateral_capacity"
+                and case.request.facility_type == "asset_based"
+                and borrowing_base.status == "blocked"
+                else "valid"
+            ),
+            reason=(
+                borrowing_base.policy_notice
+                if key == "collateral_capacity"
+                and case.request.facility_type == "asset_based"
+                else "Calculated from the request, financial inputs, and active policy."
+            ),
             policy_ref="policy.v1" if key == "policy_capacity" else None,
             binding=key in binding,
         )
@@ -419,7 +471,11 @@ def _capacity(
         leverage=_view(_new_money(leverage_minor, request)),
         dscr=_view(_new_money(dscr_minor, request)),
         collateral=(
-            case.financials.collateral_capacity if collateral_applicable else None
+            borrowing_base.borrowing_base
+            if case.request.facility_type == "asset_based"
+            else case.financials.collateral_capacity
+            if collateral_applicable
+            else None
         ),
         policy=_view(_new_money(policy.policy_capacity_minor, request)),
         recommended=_view(_new_money(recommended_minor, request)),
@@ -462,7 +518,14 @@ def _scenario(
     annual_payment = _annual_payment(new_debt, effective_new_rate, amortization_years)
     existing_interest = (
         sum(
-            int(Decimal(item.principal.amount_minor) * item.annual_rate)
+            int(
+                Decimal(item.principal.amount_minor)
+                * (
+                    max(item.rate_floor, item.annual_rate + assumptions.rate_shock)
+                    if item.rate_type == "floating"
+                    else item.annual_rate
+                )
+            )
             for item in case.debt_instruments
         )
         if case.debt_instruments
@@ -669,6 +732,7 @@ def _covenants(
     policy: CreditPolicy,
     case: CaseInput,
     scorecard: ScorecardView,
+    borrowing_base: BorrowingBaseView,
 ) -> list[CovenantView]:
     favorable_reasons = {"nm_no_obligation", "nm_no_cash_interest"}
 
@@ -846,7 +910,11 @@ def _covenants(
                 CovenantView(
                     name="Borrowing-base availability",
                     threshold="Outstanding amount may not exceed eligible collateral",
-                    actual=_currency(case.financials.collateral_capacity),
+                    actual=(
+                        _currency(borrowing_base.borrowing_base)
+                        if borrowing_base.borrowing_base is not None
+                        else "Blocked - borrowing-base inputs required"
+                    ),
                     headroom="Calculated at each draw",
                     status="pass",
                     scenario="base",
@@ -881,104 +949,200 @@ def _reverse_stress(
     capacity: CapacityView,
 ) -> ReverseStressView:
     del base_cfads, service, earnings
+    tolerance = policy.solver_tolerance
+    starting_cash = _money(case.financials.unrestricted_cash)
 
-    def trial(decline: Decimal) -> Decimal | None:
-        base = case.scenarios["base"]
-        shocked = base.model_copy(update={"revenue_growth": -decline})
+    def run(
+        scenario_name: Literal["base", "downside", "severe"],
+        updates: dict[str, Decimal],
+        loan_minor: Decimal | None = None,
+    ) -> ScenarioView:
+        assumption = case.scenarios[scenario_name].model_copy(update=updates)
         scenarios = dict(case.scenarios)
-        scenarios["base"] = shocked
+        scenarios[scenario_name] = assumption
         trial_case = case.model_copy(update={"scenarios": scenarios})
-        result = _scenario(
-            "base",
+        trial_capacity = capacity
+        if loan_minor is not None:
+            trial_capacity = capacity.model_copy(
+                update={
+                    "recommended": _view(
+                        _new_money(
+                            max(0, int(loan_minor.quantize(Decimal(1)))),
+                            _money(case.request.amount),
+                        )
+                    )
+                }
+            )
+        return _scenario(
+            scenario_name,
             trial_case,
             policy,
             debt,
-            _money(case.financials.unrestricted_cash),
-            capacity,
+            starting_cash,
+            trial_capacity,
         )
-        dscr_value = result.years[0].dscr
-        return None if dscr_value is None else Decimal(dscr_value) - policy.minimum_dscr
 
-    lower = ZERO
-    upper = Decimal("0.95")
-    tolerance = Decimal("0.0001")
-    lower_value = trial(lower)
-    upper_value = trial(upper)
-    iterations = 0
-    converged = False
-    failure_reason: str | None = None
-    residual = Decimal(0)
-    if lower_value is None or upper_value is None:
-        failure_reason = (
-            "The forecast DSCR is not numerically meaningful at a solver bound."
-        )
-    elif lower_value <= ZERO:
-        upper = lower
-        residual = lower_value
-        converged = True
-    elif upper_value > ZERO:
-        residual = upper_value
-        failure_reason = "The solver bounds do not bracket a DSCR breach."
-    else:
-        residual = upper_value
-        for iteration in range(1, 61):
-            iterations = iteration
-            midpoint = (lower + upper) / Decimal(2)
-            trial_value = trial(midpoint)
-            if trial_value is None:
-                failure_reason = (
-                    "The forecast DSCR became not meaningful during iteration."
+    def ratio_headroom(
+        value: str | None, threshold: Decimal, minimum: bool
+    ) -> Decimal | None:
+        if value is None:
+            return None
+        actual = Decimal(value)
+        return actual - threshold if minimum else threshold - actual
+
+    revenue_solver = solve_reverse_stress(
+        key="revenue_dscr",
+        variable_solved="Revenue decline",
+        lower_bound=ZERO,
+        upper_bound=Decimal("0.95"),
+        tolerance=tolerance,
+        max_iterations=policy.solver_max_iterations,
+        objective=lambda decline: ratio_headroom(
+            run("base", {"revenue_growth": -decline}).years[0].dscr,
+            policy.minimum_dscr,
+            True,
+        ),
+        result_multiplier=HUNDRED,
+        interpretation="Revenue decline causing first-year DSCR to reach the active minimum; every trial reruns the full forecast.",
+    )
+    margin_solver = solve_reverse_stress(
+        key="margin_leverage",
+        variable_solved="EBITDA margin decline",
+        lower_bound=ZERO,
+        upper_bound=Decimal("0.60"),
+        tolerance=tolerance,
+        max_iterations=policy.solver_max_iterations,
+        objective=lambda decline: ratio_headroom(
+            run(
+                "base",
+                {
+                    "ebitda_margin_change": case.scenarios["base"].ebitda_margin_change
+                    - decline
+                },
+            )
+            .years[0]
+            .leverage,
+            policy.maximum_leverage,
+            False,
+        ),
+        result_multiplier=HUNDRED,
+        interpretation="EBITDA-margin decline causing first-year leverage to reach the active maximum.",
+    )
+    rate_solver = solve_reverse_stress(
+        key="rate_coverage",
+        variable_solved="Interest-rate shock",
+        lower_bound=ZERO,
+        upper_bound=Decimal("0.25"),
+        tolerance=tolerance,
+        max_iterations=policy.solver_max_iterations,
+        objective=lambda shock: ratio_headroom(
+            run("base", {"rate_shock": shock}).years[0].interest_coverage,
+            policy.minimum_interest_coverage,
+            True,
+        ),
+        result_multiplier=HUNDRED,
+        interpretation="Interest-rate shock causing first-year interest coverage to reach the active minimum.",
+    )
+
+    minimum_cash = Decimal(case.financials.minimum_operating_cash.amount_minor)
+
+    def liquidity_headroom(shock: Decimal) -> Decimal:
+        result = run(
+            "base",
+            {
+                "working_capital_pct_revenue": min(
+                    ONE,
+                    case.scenarios["base"].working_capital_pct_revenue + shock,
                 )
-                break
-            residual = trial_value
-            if abs(residual) <= tolerance or upper - lower <= tolerance:
-                lower = upper = midpoint
-                converged = True
-                break
-            if residual > ZERO:
-                lower = midpoint
-            else:
-                upper = midpoint
-        if not converged and failure_reason is None:
-            failure_reason = "The solver reached its iteration limit."
-    solved_decline = (lower + upper) / Decimal(2) if converged else None
-    required_earnings = (
-        Decimal(debt.amount_minor + capacity.recommended.amount_minor)
-        / policy.maximum_leverage
+            },
+        )
+        return min(
+            Decimal(year.ending_cash.amount_minor) - minimum_cash
+            for year in result.years
+        )
+
+    working_capital_solver = solve_reverse_stress(
+        key="working_capital_liquidity",
+        variable_solved="Working-capital use as a share of revenue",
+        lower_bound=ZERO,
+        upper_bound=Decimal("0.75"),
+        tolerance=Decimal(1),
+        max_iterations=policy.solver_max_iterations,
+        objective=liquidity_headroom,
+        result_multiplier=HUNDRED,
+        interpretation="Incremental working-capital use causing minimum operating liquidity to be exhausted.",
     )
-    current_earnings = max(
-        Decimal(1),
-        Decimal(
-            _money(case.financials.ebit).amount_minor
-            + _money(case.financials.depreciation_amortization).amount_minor
-        ),
+
+    def policy_loan_headroom(amount: Decimal) -> Decimal | None:
+        result = run("downside", {}, amount)
+        headrooms: list[Decimal] = []
+        for year in result.years:
+            leverage = ratio_headroom(year.leverage, policy.maximum_leverage, False)
+            dscr = ratio_headroom(year.dscr, policy.minimum_dscr, True)
+            if leverage is None or dscr is None:
+                return None
+            headrooms.extend(
+                [
+                    leverage,
+                    dscr,
+                    Decimal(year.ending_cash.amount_minor) - minimum_cash,
+                ]
+            )
+        return min(headrooms)
+
+    maximum_downside_solver = solve_reverse_stress(
+        key="maximum_downside_loan",
+        variable_solved="Maximum proposed loan passing downside policy",
+        lower_bound=ZERO,
+        upper_bound=Decimal(policy.maximum_exposure_minor),
+        tolerance=Decimal(100),
+        max_iterations=policy.solver_max_iterations,
+        objective=policy_loan_headroom,
+        money_template=case.request.amount,
+        interpretation="Maximum proposed loan that preserves downside leverage, DSCR, and minimum-liquidity policy.",
     )
-    margin_decline = max(ZERO, ONE - required_earnings / current_earnings)
-    maximum_downside = min(
-        capacity.recommended.amount_minor, capacity.dscr.amount_minor
+
+    def severe_liquidity_headroom(amount: Decimal) -> Decimal:
+        result = run("severe", {}, amount)
+        return min(
+            Decimal(year.ending_cash.amount_minor) - minimum_cash
+            for year in result.years
+        )
+
+    maximum_severe_solver = solve_reverse_stress(
+        key="maximum_severe_liquidity_loan",
+        variable_solved="Maximum proposed loan passing severe liquidity",
+        lower_bound=ZERO,
+        upper_bound=Decimal(policy.maximum_exposure_minor),
+        tolerance=Decimal(100),
+        max_iterations=policy.solver_max_iterations,
+        objective=severe_liquidity_headroom,
+        money_template=case.request.amount,
+        interpretation="Maximum proposed loan that preserves minimum operating cash in the severe forecast.",
     )
+    solvers = [
+        revenue_solver,
+        margin_solver,
+        rate_solver,
+        working_capital_solver,
+        maximum_downside_solver,
+        maximum_severe_solver,
+    ]
     return ReverseStressView(
-        dscr_minimum_revenue_decline=(
-            None
-            if solved_decline is None
-            else str((solved_decline * HUNDRED).quantize(Decimal("0.01")))
-        ),
-        leverage_breach_margin_decline=str(
-            (margin_decline * HUNDRED).quantize(Decimal("0.01"))
-        ),
-        maximum_downside_loan=_view(
-            _new_money(maximum_downside, _money(case.request.amount))
-        ),
-        converged=converged,
-        iterations=iterations,
+        dscr_minimum_revenue_decline=revenue_solver.result,
+        leverage_breach_margin_decline=margin_solver.result,
+        maximum_downside_loan=maximum_downside_solver.result_money,
+        converged=revenue_solver.converged,
+        iterations=revenue_solver.iterations,
         tolerance=str(tolerance),
-        residual=str(residual.quantize(Decimal("0.0001"))),
-        lower_bound=str(lower),
-        upper_bound=str(upper),
+        residual=revenue_solver.residual or "not_available",
+        lower_bound=revenue_solver.lower_bound,
+        upper_bound=revenue_solver.upper_bound,
         interpretation=(
             "Revenue decline that causes first-year DSCR to reach the active policy minimum; the full forecast is rerun for every trial."
         ),
-        failure_reason=failure_reason,
+        failure_reason=revenue_solver.failure_reason,
+        solvers=solvers,
     )
 
 
@@ -988,6 +1152,7 @@ def _policy_checks(
     metrics: dict[str, RatioResult],
     capacity: CapacityView,
     scorecard: ScorecardView,
+    borrowing_base: BorrowingBaseView,
 ) -> list[PolicyCheckView]:
     def ratio_check(
         key: str,
@@ -1201,10 +1366,15 @@ def _policy_checks(
             )
         )
     else:
+        collateral_amount = (
+            borrowing_base.borrowing_base
+            if case.request.facility_type == "asset_based"
+            else case.financials.collateral_capacity
+        )
         collateral_coverage = (
-            Decimal(case.financials.collateral_capacity.amount_minor)
+            Decimal(collateral_amount.amount_minor)
             / Decimal(case.request.amount.amount_minor)
-            if case.request.amount.amount_minor > 0
+            if collateral_amount is not None and case.request.amount.amount_minor > 0
             else ZERO
         )
         passed = collateral_coverage >= policy.minimum_collateral_coverage
@@ -1316,10 +1486,39 @@ def analyze_case(
         ebit=_money(financials.ebit),
         depreciation_amortization=_money(financials.depreciation_amortization),
     )
+    approved_adjustments = [
+        item
+        for item in case.normalization_adjustments
+        if item.approval_status == "approved"
+    ]
+    positive_adjustments = (
+        _new_money(
+            sum(
+                abs(item.ebitda_impact.amount_minor)
+                for item in approved_adjustments
+                if item.direction == "positive"
+            ),
+            reported_ebitda,
+        )
+        if approved_adjustments
+        else _money(financials.positive_ebitda_adjustments)
+    )
+    negative_adjustments = (
+        _new_money(
+            sum(
+                abs(item.ebitda_impact.amount_minor)
+                for item in approved_adjustments
+                if item.direction == "negative"
+            ),
+            reported_ebitda,
+        )
+        if approved_adjustments
+        else _money(financials.negative_ebitda_adjustments)
+    )
     earnings = adjusted_ebitda(
         reported_ebitda=reported_ebitda,
-        approved_positive_adjustments=_money(financials.positive_ebitda_adjustments),
-        approved_negative_adjustments=_money(financials.negative_ebitda_adjustments),
+        approved_positive_adjustments=positive_adjustments,
+        approved_negative_adjustments=negative_adjustments,
     )
     debt = gross_debt(
         short_term_borrowings=_money(financials.short_term_borrowings),
@@ -1365,7 +1564,11 @@ def analyze_case(
         "cfo_debt": cfo_to_debt(_money(financials.cfo), debt),
         "ebitda_margin": ebitda_margin(earnings, _money(financials.revenue)),
     }
-    capacity = _capacity(case, policy, debt, earnings, cash_available, service)
+    financial_spreading = analyze_spreading(case)
+    borrowing_base = calculate_borrowing_base(case, policy)
+    capacity = _capacity(
+        case, policy, debt, earnings, cash_available, service, borrowing_base
+    )
     scorecard = _scorecard(
         policy,
         metrics_raw["gross_leverage"],
@@ -1376,12 +1579,17 @@ def analyze_case(
         metrics_raw["ebitda_margin"],
         case,
     )
+    adjustments = summarize_adjustments(case, policy, earnings)
+    facility_protection = assess_facility(case, policy, borrowing_base)
+    pricing = calculate_pricing(case, policy, scorecard)
     scenarios = [
         _scenario(name, case, policy, debt, available_cash, capacity)
         for name in ("base", "downside", "severe")
     ]
-    covenants = _covenants(scenarios, policy, case, scorecard)
-    policy_checks = _policy_checks(case, policy, metrics_raw, capacity, scorecard)
+    covenants = _covenants(scenarios, policy, case, scorecard, borrowing_base)
+    policy_checks = _policy_checks(
+        case, policy, metrics_raw, capacity, scorecard, borrowing_base
+    )
     reverse_stress = _reverse_stress(
         case, policy, cash_available, service, earnings, debt, capacity
     )
@@ -1399,48 +1607,130 @@ def analyze_case(
     input_hash = hashlib.sha256(serialized).hexdigest()
     timestamp = calculated_at or datetime.now(UTC)
     downside = next(item for item in scenarios if item.name == "downside")
+    base_scenario = next(item for item in scenarios if item.name == "base")
+    severe = next(item for item in scenarios if item.name == "severe")
+    borrowing_base_text = (
+        _currency(borrowing_base.borrowing_base)
+        if borrowing_base.borrowing_base is not None
+        else borrowing_base.status.replace("_", " ")
+    )
+    maturity_lines = [
+        f"{item.name}: {_currency(item.principal)} outstanding; year {item.maturity_year} maturity; {_currency(item.scheduled_amortization)} scheduled annual amortization."
+        for item in case.debt_instruments
+    ] or ["Instrument-level debt maturity schedule was not supplied."]
     memo_sections = {
-        "executive_summary": [
-            f"{case.borrower.legal_name} requests {_currency(case.request.amount)} for {case.request.purpose}.",
-            f"Recommendation: {decision.outcome}; supportable amount {_currency(capacity.recommended)}; internal grade {scorecard.grade or 'blocked'}.",
+        "executive_recommendation": [
+            f"Recommendation: {decision.outcome}; requested {_currency(capacity.requested)}; supportable {_currency(capacity.recommended)}; internal grade {scorecard.grade or 'blocked'}.",
+            *decision.rationale,
         ],
         "borrower_overview": [
             case.borrower.description,
             f"Industry: {case.borrower.industry}. Headquarters: {case.borrower.headquarters}.",
         ],
-        "request_and_structure": [
-            f"Facility: {decision.facility_type}; maturity {decision.maturity_years} years; amortization {decision.amortization_years} years.",
-            f"Collateral: {decision.collateral}. Guarantee: {decision.guarantee}.",
+        "ownership_and_management": [
+            "Ownership details were not supplied in the synthetic case.",
+            "Management assessment is supported by the qualitative evidence record.",
         ],
+        "business_model": [case.borrower.description],
+        "industry_risk": [*case.business_risk.risks, *case.business_risk.strengths],
+        "loan_request": [
+            f"{case.borrower.legal_name} requests {_currency(case.request.amount)}."
+        ],
+        "facility_structure": [
+            f"{decision.facility_type}; {case.request.rate_type} rate; {decision.maturity_years}-year maturity; {decision.amortization_years}-year amortization."
+        ],
+        "loan_purpose": [case.request.purpose],
+        "sources_and_uses": [
+            f"Proposed lender source: {_currency(case.request.amount)}.",
+            f"Stated use: {case.request.purpose}. No additional sources or uses were supplied.",
+        ],
+        "primary_repayment_source": [decision.primary_repayment_source],
+        "secondary_repayment_source": [decision.secondary_repayment_source],
         "historical_financial_performance": [
             f"Revenue {_currency(financials.revenue)}; reported EBITDA {_currency(_view(reported_ebitda))}; adjusted EBITDA {_currency(_view(earnings))}.",
-            f"Gross leverage {metrics_raw['gross_leverage'].value or 'N/M'}x; DSCR {metrics_raw['dscr'].value or 'N/M'}x.",
+            f"Selected LTM method: {financial_spreading.selected_ltm_method or 'legacy snapshot'}; status {financial_spreading.ltm_status}.",
         ],
-        "capacity": [
+        "financial_adjustments": [
+            f"Reported EBITDA {_currency(adjustments.reported_ebitda)}; approved adjustment {_currency(adjustments.approved_adjustment)}; adjusted EBITDA {_currency(adjustments.adjusted_ebitda)}.",
+            adjustments.warning or "No adjustment-threshold warning.",
+        ],
+        "capital_structure": [
+            f"Gross debt {_currency(_view(debt))}; unrestricted cash {_currency(financials.unrestricted_cash)}; equity {_currency(financials.equity)}."
+        ],
+        "debt_maturity_schedule": maturity_lines,
+        "key_ratios": [
+            f"Gross leverage {metrics_raw['gross_leverage'].value or 'N/M'}x; interest coverage {metrics_raw['interest_coverage'].value or 'N/M'}x; DSCR {metrics_raw['dscr'].value or 'N/M'}x."
+        ],
+        "obligor_grade": [
+            f"Score {scorecard.score or 'blocked'}; grade {scorecard.grade or 'blocked'}; confidence {scorecard.confidence_score}/100.",
+            "Facility protection is assessed separately and does not alter this obligor grade.",
+        ],
+        "facility_protection": [
+            f"Score {facility_protection.score}; category {facility_protection.category}; expected recovery {facility_protection.expected_recovery_category}.",
+            *facility_protection.main_protections,
+            *facility_protection.main_structural_weaknesses,
+        ],
+        "debt_capacity": [
             f"Requested {_currency(capacity.requested)}; recommended {_currency(capacity.recommended)}.",
             f"Binding constraint(s): {', '.join(capacity.binding_constraints)}.",
         ],
-        "scenario_and_reverse_stress": [
-            f"Downside first breach year: {downside.first_breach_year or 'none in forecast'}.",
-            (
-                f"Revenue decline to minimum DSCR: {reverse_stress.dscr_minimum_revenue_decline}%."
-                if reverse_stress.dscr_minimum_revenue_decline is not None
-                else f"Revenue-to-DSCR reverse stress unavailable: {reverse_stress.failure_reason}."
-            ),
+        "base_case": [
+            f"First covenant breach year: {base_scenario.first_breach_year or 'none in forecast'}.",
+            *[
+                f"Year {year.year}: revenue {_currency(year.revenue)}; EBITDA {_currency(year.adjusted_ebitda)}; DSCR {year.dscr or 'N/M'}x; ending cash {_currency(year.ending_cash)}."
+                for year in base_scenario.years
+            ],
         ],
-        "analysis": decision.rationale,
-        "strengths": case.business_risk.strengths,
-        "risks": case.business_risk.risks,
-        "recommendation_and_terms": [decision.outcome, *decision.conditions],
+        "downside_case": [
+            f"First covenant breach year: {downside.first_breach_year or 'none in forecast'}; liquidity exhaustion year {downside.liquidity_exhaustion_year or 'none in forecast'}.",
+            *[
+                f"Year {year.year}: revenue {_currency(year.revenue)}; EBITDA {_currency(year.adjusted_ebitda)}; DSCR {year.dscr or 'N/M'}x; cash shortfall {_currency(year.cash_shortfall)}."
+                for year in downside.years
+            ],
+        ],
+        "severe_case": [
+            f"First covenant breach year: {severe.first_breach_year or 'none in forecast'}; liquidity exhaustion year {severe.liquidity_exhaustion_year or 'none in forecast'}.",
+            *[
+                f"Year {year.year}: ending debt {_currency(year.ending_debt)}; ending cash {_currency(year.ending_cash)}; refinancing need {_currency(year.refinancing_need)}; unpaid debt service {_currency(year.unpaid_debt_service)}."
+                for year in severe.years
+            ],
+        ],
+        "reverse_stress": [
+            *[
+                f"{solver.variable_solved}: {solver.result or (_currency(solver.result_money) if solver.result_money else 'no converged result')}; iterations {solver.iterations}; residual {solver.residual or 'not available'}; {solver.failure_reason or solver.interpretation}."
+                for solver in reverse_stress.solvers
+            ]
+        ],
+        "collateral_or_borrowing_base": [
+            f"Borrowing-base status: {borrowing_base.status}; amount {borrowing_base_text}.",
+            borrowing_base.policy_notice,
+        ],
+        "indicative_pricing": [
+            f"Reference base rate {pricing.reference_base_rate}; risk-grade spread {pricing.risk_grade_spread_bps} bps; indicative all-in rate {pricing.indicative_all_in_rate}.",
+            pricing.disclaimer,
+        ],
+        "covenants": [
+            *[
+                f"{item.name}: {item.actual} versus {item.threshold}; {item.status}; {item.frequency}."
+                for item in covenants
+            ]
+        ],
         "policy_exceptions": decision.policy_exceptions or ["None identified."],
+        "conditions_precedent": decision.conditions,
         "monitoring": decision.monitoring,
-        "limitations": [
-            "Synthetic demonstration — not a real data-quality assessment",
+        "data_limitations": [
+            *scorecard.confidence_penalties,
+            *financial_spreading.reconciliation_warnings,
+            "Synthetic demonstration - not a real data-quality assessment.",
             "Educational and illustrative only; not lending, investment, accounting, or legal advice.",
         ],
-        "sign_off": [
+        "analyst_sign_off": [
             "Prepared by: ____________________",
+            f"Data as of: {case.data_as_of}.",
+        ],
+        "reviewer_sign_off": [
             "Reviewed by: ____________________",
+            f"Model {credit_engine.__version__}; policy {policy.version}; calculation {timestamp.isoformat()}.",
         ],
     }
     return AnalysisResult(
@@ -1451,7 +1741,12 @@ def analyze_case(
         input_hash=input_hash,
         calculated_at=timestamp.isoformat(),
         metrics={key: _ratio_view(value) for key, value in metrics_raw.items()},
+        financial_spreading=financial_spreading,
+        adjustments=adjustments,
         capacity=capacity,
+        facility_protection=facility_protection,
+        borrowing_base=borrowing_base,
+        pricing=pricing,
         scorecard=scorecard,
         scenarios=scenarios,
         covenants=covenants,

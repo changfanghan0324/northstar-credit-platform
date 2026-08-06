@@ -94,3 +94,48 @@ Claude recommended P0 correctness/reviewability, P1 foundations, then P2 capabil
 - `docs/collaboration/final-review-claude-opus-5.md`
 
 The review record is intentionally honest about its Bash limitation and does not reuse previous Claude sessions as this cycle's evidence.
+
+## Independent resulting-diff review
+
+- Model requested and returned: `claude-opus-5` (canonical first-party model)
+- Effort: `high`
+- Successful session ID: `e780a0d1-7fc4-46a6-a258-65f54bef2b06`
+- Completed: `2026-08-06T17:57:22Z`
+- Mode: Codex workspace, safe mode, explicit read-only `Read`, `Grep`, and `Glob`
+  tools; no command execution, edits, Git actions, deployment, web search, or Claude
+  App control
+- Review cost/usage evidence: 42 review turns, 18,455 `claude-opus-5` output
+  tokens, no permission denials, terminal reason `completed`
+- Verdict: **PROCEED WITH DEPLOYMENT**
+
+Claude inspected the resulting model, policy, API, persistence, migration, PDF,
+frontend, and required test files as a different agent from the author. It found no
+deployment-blocking code defect and specifically verified evidence for critical
+ratio blocking, period overlap/reconciliation, adjustment and business-risk
+evidence, obligor/facility separation, borrowing-base capacity, pricing
+reconciliation, six full-forecast bounded solvers, version/session/money integrity,
+32-section bilingual output, and truthful Portfolio Demo runtime disclosure.
+
+Claude identified one release gate: the embedded Noto Sans TC font directory was
+still untracked. Codex accepted this gate; the font and OFL license are included in
+the release commit and the Vercel artifact must pass a Traditional Chinese PDF smoke
+test before the alias is accepted.
+
+Claude also reported seven nonblocking improvements. Codex resolved the user-visible
+and numerical consistency items before deployment:
+
+- removed the legacy fabricated zero from a nonconverged maximum-loan solver field
+  and made legacy top-level solver values nullable;
+- generated real quarter date ranges rather than annual dates for a quarter card;
+- zeroed score and contribution on blocked score components;
+- interpreted timezone-less SQLite audit timestamps as UTC;
+- replaced memo paragraph text keys with stable section/index keys;
+- documented Mode A ORM schema ownership and durable-migration ordering;
+- retained the production requirement that `NORTHSTAR_ALLOW_TEST_SESSION_HEADER`
+  remain unset.
+
+Two attempted reviews before the successful session are not counted as review
+results. The first produced no response and was terminated. The second confirmed
+the canonical model but looped on a denied read outside the repository; it ended
+with `is_error: true` and no verdict. This record uses only the successful completed
+session above.

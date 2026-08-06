@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
     create_engine,
     func,
     select,
@@ -61,6 +62,9 @@ class CaseVersionRecord(Base):
     """Immutable input snapshot for one user-visible case version."""
 
     __tablename__ = "case_versions"
+    __table_args__ = (
+        UniqueConstraint("case_id", "case_version", name="uq_case_versions_number"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     case_id: Mapped[str] = mapped_column(

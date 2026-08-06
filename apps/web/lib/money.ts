@@ -40,7 +40,11 @@ export function parseMoneyInput(
 ): MoneyParseResult {
   const zh = language === "zh-TW";
   if (!Number.isInteger(exponent) || exponent < 0 || exponent > 6) {
-    return { ok: false, code: "invalid_scale", message: message("invalid_scale", zh) };
+    return {
+      ok: false,
+      code: "invalid_scale",
+      message: message("invalid_scale", zh),
+    };
   }
 
   const trimmed = input.trim();
@@ -75,9 +79,15 @@ export function parseMoneyInput(
   }
 
   const whole = wholePart.replaceAll(",", "");
-  const digits = `${whole}${fraction.padEnd(exponent, "0")}`.replace(/^0+(?=\d)/, "");
+  const digits = `${whole}${fraction.padEnd(exponent, "0")}`.replace(
+    /^0+(?=\d)/,
+    "",
+  );
   const signed = BigInt(digits || "0") * (trimmed.startsWith("-") ? -1n : 1n);
-  if (signed > BigInt(Number.MAX_SAFE_INTEGER) || signed < BigInt(Number.MIN_SAFE_INTEGER)) {
+  if (
+    signed > BigInt(Number.MAX_SAFE_INTEGER) ||
+    signed < BigInt(Number.MIN_SAFE_INTEGER)
+  ) {
     return {
       ok: false,
       code: "unsafe_amount",

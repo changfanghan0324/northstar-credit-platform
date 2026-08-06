@@ -13,3 +13,6 @@ node_modules/
 .next/
 .vercel/
 *.tsbuildinfo
+playwright-report/
+test-results/
+tmp/

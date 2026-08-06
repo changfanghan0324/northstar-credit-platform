@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from northstar_api.database import CaseRecord, engine
 from northstar_api.main import app
+from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -147,6 +148,21 @@ def test_server_issues_anonymous_cookie_and_runtime_is_truthful() -> None:
         assert "northstar_session" in cases.headers.get("set-cookie", "")
 
 
+def test_public_demo_catalog_does_not_race_anonymous_session_cookie() -> None:
+    with TestClient(app) as client:
+        catalog = client.get("/demo-cases")
+        template = client.get("/demo-cases/stable-manufacturer/template")
+        assert catalog.status_code == 200
+        assert template.status_code == 200
+        assert "northstar_session" not in catalog.headers.get("set-cookie", "")
+        assert "northstar_session" not in template.headers.get("set-cookie", "")
+
+        opened = client.post("/demo-cases/stable-manufacturer/open")
+        assert opened.status_code == 200
+        assert "northstar_session" in opened.headers.get("set-cookie", "")
+        assert client.get(f"/cases/{opened.json()['id']}").status_code == 200
+
+
 def test_localized_detailed_pdf_uses_currency_not_minor_units() -> None:
     with TestClient(app) as client:
         owner = {"X-Northstar-Session": f"integration-pdf-zh-{uuid4()}"}
@@ -159,10 +175,12 @@ def test_localized_detailed_pdf_uses_currency_not_minor_units() -> None:
         assert pdf.status_code == 200
         assert pdf.content.startswith(b"%PDF-1.4")
         assert b"minor units" not in pdf.content
-        assert b"/UniCNS-UCS2-H" in pdf.content
-        page_count = re.search(rb"/Count (\d+)", pdf.content)
-        assert page_count is not None
-        assert int(page_count.group(1)) > 1
+        assert b"NotoSansTC" in pdf.content
+        assert b"/ToUnicode" in pdf.content
+        reader = PdfReader(BytesIO(pdf.content))
+        assert len(reader.pages) > 1
+        assert reader.metadata is not None
+        assert reader.metadata.title == "北極星授信備忘錄"
 
 
 def test_expired_case_is_not_read_or_listed() -> None:
@@ -190,7 +208,7 @@ def test_english_pdf_preserves_mandated_disclaimer_punctuation() -> None:
             headers=owner,
         )
 
-        assert (
-            b"Synthetic demonstration \x97 not a real data-quality assessment"
-            in pdf.content
-        )
+        reader = PdfReader(BytesIO(pdf.content))
+        text = "\n".join(page.extract_text() for page in reader.pages)
+        assert "Synthetic demonstration data" in text
+        assert "Educational and illustrative only" in text

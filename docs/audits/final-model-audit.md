@@ -44,3 +44,22 @@ The existing suite passes but does not explicitly cover the full requested matri
 - Store every policy number, including facility weights, advance rates, pricing grids, and solver limits, in policy configuration.
 
 Status: pending independent Claude Opus 5 High challenge.
+
+## Final implementation verification
+
+All initial material findings above were implemented and tested. The final engine
+uses explicit ratio states without numerical sentinels, blocks critical missing or
+adverse-not-meaningful factors, and suppresses both final grade and blocked component
+scores. Period models reject overlap, reconcile balance sheets, and block
+incompatible LTM methods. Approved adjustments and qualitative risk factors require
+evidence/rationale. Facility protection is downstream and independent from obligor
+grade; asset-based capacity uses the calculated borrowing base. Pricing reconciles
+the reference rate plus seven versioned basis-point components. All six reverse
+stress records run the full forecast through bounded bisection and publish no number
+on failure.
+
+Verification evidence: 98 passing Python tests, 96.07% measured aggregate coverage,
+strict Mypy, versioned policy validation, PDF integration tests, and independent
+`claude-opus-5` source review. The exact residual limitation is documented: the
+bundled demo cases are legacy snapshots until a user supplies compatible periods;
+this limitation is visible and does not manufacture LTM data.

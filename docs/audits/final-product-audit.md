@@ -57,3 +57,32 @@ The baseline proves the previously delivered MVP works. It does not satisfy the 
 4. Final gate: full static/unit/property/integration/browser/accessibility/localization/PDF/golden-case suite, new independent diff review, one validated deploy artifact, and production smoke test.
 
 This order is a Codex proposal, not a final decision. Claude Opus 5 High must challenge it before material implementation.
+
+## Final implementation disposition
+
+The baseline gap matrix above is retained as before-state evidence. The resulting
+implementation closes the P0 capability gaps with backward-compatible contracts:
+real immutable case versions/audit reads, period statements and guarded LTM,
+itemized adjustments, six evidence-backed qualitative factors, independent facility
+protection, an asset-based borrowing base, transparent pricing, six solver records,
+32-section bilingual memos, Guided/Analyst disclosure, browser/axe tests, and exact
+money bounds.
+
+Local final gate on 2026-08-06:
+
+- 98 Python unit/integration tests passed; measured engine/application/API coverage
+  was 96.07%.
+- Ruff, Ruff format, strict Mypy, strict TypeScript, ESLint, and the Next.js 16
+  production build passed.
+- Eight Playwright tests passed across desktop Chromium and mobile Chromium,
+  including axe, both modes, nine workspace sections, mobile dialog behavior,
+  keyboard skip navigation, localized 404, and rendered Traditional Chinese leak
+  scanning.
+- English and Traditional Chinese detailed PDFs were regenerated and visually
+  reviewed page by page; the embedded font/license are release files.
+- Independent final reviewer `claude-opus-5` session
+  `e780a0d1-7fc4-46a6-a258-65f54bef2b06` found no blocker and returned
+  **PROCEED WITH DEPLOYMENT**.
+
+Production deployment and public alias verification are recorded after the release
+commit in the production verification section added below.

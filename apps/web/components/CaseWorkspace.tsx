@@ -29,6 +29,15 @@ import type {
   ScenarioYear,
 } from "@/lib/types";
 import { workspaceSections } from "@/lib/workspace";
+import { FacilityProtectionPage } from "./workspace/FacilityProtectionPage";
+import { FinancialSpreadingPanel } from "./workspace/FinancialSpreadingPanel";
+import { GlossaryDrawer } from "./workspace/GlossaryDrawer";
+import { FinancialSpreadEditor } from "./workspace/FinancialSpreadEditor";
+import {
+  AdjustmentLogEditor,
+  BorrowingBaseEditor,
+} from "./workspace/AdjustmentCollateralEditors";
+import { AuditHistory } from "./workspace/AuditHistory";
 
 const labels = {
   en: [
@@ -36,6 +45,7 @@ const labels = {
     "Inputs",
     "Financials",
     "Debt capacity",
+    "Facility protection",
     "Risk",
     "Stress & covenants",
     "Decision & terms",
@@ -46,6 +56,7 @@ const labels = {
     "輸入資料",
     "財務分析",
     "債務容量",
+    "設施保障",
     "風險評等",
     "壓力測試與契約",
     "決策與條件",
@@ -58,6 +69,7 @@ const questions = {
     "What information is this analysis based on?",
     "How has the borrower performed and generated cash?",
     "How much additional debt is supportable?",
+    "How well is the lender protected?",
     "Why did the borrower receive this grade?",
     "What breaks under stress?",
     "What should the lender approve and under what structure?",
@@ -68,6 +80,7 @@ const questions = {
     "這份分析使用了哪些資料？",
     "借款人的營運與現金產生能力如何？",
     "借款人可承擔多少新增債務？",
+    "貸方獲得多少結構性保障？",
     "借款人為何得到此評等？",
     "壓力下哪些條件會失效？",
     "貸方應核准什麼額度與結構？",
@@ -107,6 +120,29 @@ const fieldName: Record<string, [string, string]> = {
   minimum_operating_cash: ["Minimum operating cash", "最低營運現金"],
   collateral_capacity: ["Eligible collateral support", "合格擔保品支援額"],
 };
+const scenarioFieldName: Record<string, [string, string]> = {
+  revenue_growth: ["Revenue growth", "營收成長率"],
+  subsequent_growth: ["Subsequent growth", "後續成長率"],
+  ebitda_margin_change: ["EBITDA margin change", "EBITDA 利潤率變動"],
+  rate_shock: ["Rate shock", "利率衝擊"],
+  working_capital_pct_revenue: [
+    "Working capital as % of revenue",
+    "營運資金占營收比率",
+  ],
+  maintenance_capex_pct_revenue: [
+    "Maintenance capex as % of revenue",
+    "維持性資本支出占營收比率",
+  ],
+};
+const metricName: Record<string, [string, string]> = {
+  gross_leverage: ["Gross leverage", "總槓桿"],
+  net_leverage: ["Net leverage", "淨槓桿"],
+  interest_coverage: ["Interest coverage", "利息保障"],
+  dscr: ["DSCR", "DSCR"],
+  free_cash_flow_margin: ["Free-cash-flow margin", "自由現金流利潤率"],
+  current_ratio: ["Current ratio", "流動比率"],
+  cash_conversion: ["Cash conversion", "現金轉換率"],
+};
 
 function ratio(value: string | null, status = "valid", zh = false) {
   if (value === null)
@@ -142,6 +178,151 @@ function scenarioName(value: string, zh: boolean) {
         string
       >
     )[value] ?? value
+  );
+}
+function uiStatus(value: string, zh: boolean) {
+  if (!zh) return value.replaceAll("_", " ");
+  return (
+    (
+      {
+        valid: "有效",
+        adverse: "不利",
+        blocked: "已阻擋",
+        pass: "通過",
+        breach: "違反",
+        not_applicable: "不適用",
+        policy_not_applicable: "政策不適用",
+        strong: "強",
+        adequate: "良好",
+        moderate: "中等",
+        weak: "偏弱",
+        severe: "嚴重不足",
+        high: "高",
+        medium: "中",
+        low: "低",
+        limited: "有限",
+        draft: "草稿",
+        stale: "已過期",
+        analyzed: "已分析",
+        archived: "已封存",
+      } as Record<string, string>
+    )[value] ?? "已記錄"
+  );
+}
+function confidenceText(value: string, zh: boolean): string {
+  if (!zh) return value;
+  return (
+    (
+      {
+        "Deterministic formulas": "確定性公式",
+        "Versioned policy": "版本化政策",
+        "Source components retained": "保留來源組成",
+        "Instrument-level debt schedule supplied": "已提供逐筆債務表",
+        "Replace synthetic values with independently verified borrower evidence":
+          "以獨立驗證的借款人證據取代合成數值",
+        "Provide an instrument-level debt schedule": "提供逐筆債務表",
+        "Document and independently support EBITDA adjustments":
+          "記錄並獨立佐證 EBITDA 調整",
+      } as Record<string, string>
+    )[value] ?? "提供更多獨立驗證資料"
+  );
+}
+function structureText(value: string, zh: boolean): string {
+  if (!zh) return value;
+  return (
+    (
+      {
+        "None — unsecured": "無擔保",
+        "Eligible borrower assets subject to documented advance rates":
+          "依文件化預支率計算的合格借款人資產",
+        None: "無",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+function purposeText(value: string, zh: boolean): string {
+  if (!zh) return value;
+  return (
+    (
+      {
+        "Fund a new production line and refinance near-term maturities":
+          "興建新產線並再融資近期到期債務",
+        "Refinance existing debt and fund product development":
+          "再融資既有債務並投入產品開發",
+        "Acquire two regional distribution centers and expand working-capital capacity":
+          "收購兩座區域配送中心並擴大營運資金融通",
+      } as Record<string, string>
+    )[value] ?? "依案件輸入所載的合成融資用途"
+  );
+}
+function riskFactorLabel(value: string, zh: boolean) {
+  if (!zh) return value.replaceAll("_", " ");
+  return (
+    (
+      {
+        leverage: "槓桿",
+        coverage: "保障與償債",
+        liquidity: "流動性",
+        cash_flow: "現金流",
+        profitability: "獲利能力",
+        industry: "產業風險",
+        competitive_position: "競爭地位",
+        customer_concentration: "客戶集中度",
+        diversification: "多元化",
+        management_policy: "管理與財務政策",
+        governance_event: "治理與事件風險",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+function covenantLabel(value: string, zh: boolean) {
+  if (!zh) return value;
+  return (
+    (
+      {
+        "Maximum total leverage": "最高總槓桿",
+        "Minimum DSCR": "最低 DSCR",
+        "Quarterly financial reporting": "每季財務報告",
+        "Restricted distributions": "限制分配",
+        "Capital expenditure control": "資本支出控制",
+        "Borrowing-base availability": "借款基礎可用額",
+        "Collateral reporting": "擔保品報告",
+      } as Record<string, string>
+    )[value] ?? "財務契約要求"
+  );
+}
+function facilityType(value: string, zh: boolean) {
+  if (!zh) return value.replaceAll("_", " ");
+  return (
+    (
+      {
+        term_loan: "定期貸款",
+        revolver: "循環信用額度",
+        asset_based: "資產基礎融資",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+function policyCheckLabel(value: string, zh: boolean) {
+  if (!zh) return value;
+  return (
+    (
+      {
+        maximum_leverage: "最高槓桿",
+        minimum_dscr: "最低 DSCR",
+        minimum_interest_coverage: "最低利息保障",
+        maximum_maturity: "最長到期年限",
+        minimum_liquidity: "最低流動性",
+        reporting_currency: "報告幣別",
+        positive_capacity: "正向容量",
+        minimum_data_quality: "最低資料品質",
+        maximum_adjustment_magnitude: "最高調整幅度",
+        grade_eligibility: "評等資格",
+        maximum_exposure: "最高曝險",
+        minimum_collateral_coverage: "最低擔保覆蓋",
+        facility_restrictions: "額度類型限制",
+      } as Record<string, string>
+    )[value] ?? "政策檢查"
   );
 }
 function bindingLabel(value: string, zh: boolean) {
@@ -260,23 +441,158 @@ function memoTitle(value: string, zh: boolean) {
   return (
     (
       {
-        executive_summary: "執行摘要",
+        executive_recommendation: "執行建議",
         borrower_overview: "借款人概況",
-        request_and_structure: "申請與結構",
+        ownership_and_management: "所有權與管理",
+        business_model: "商業模式",
+        industry_risk: "產業風險",
+        loan_request: "貸款申請",
+        facility_structure: "授信結構",
+        loan_purpose: "貸款用途",
+        sources_and_uses: "資金來源與用途",
+        primary_repayment_source: "主要還款來源",
+        secondary_repayment_source: "次要還款來源",
         historical_financial_performance: "歷史財務表現",
-        capacity: "債務容量",
-        scenario_and_reverse_stress: "情境與反向壓力",
-        analysis: "分析",
-        strengths: "優勢",
-        risks: "風險",
-        recommendation_and_terms: "建議與條件",
+        financial_adjustments: "財務調整",
+        capital_structure: "資本結構",
+        debt_maturity_schedule: "債務到期表",
+        key_ratios: "關鍵比率",
+        obligor_grade: "債務人評等",
+        facility_protection: "設施保障",
+        debt_capacity: "債務容量",
+        base_case: "基準情境",
+        downside_case: "下行情境",
+        severe_case: "嚴重壓力情境",
+        reverse_stress: "反向壓力測試",
+        collateral_or_borrowing_base: "擔保品或借款基礎",
+        indicative_pricing: "示意定價",
+        covenants: "財務契約",
         policy_exceptions: "政策例外",
+        conditions_precedent: "先決條件",
         monitoring: "監控",
-        limitations: "限制",
-        sign_off: "簽核",
+        data_limitations: "資料限制",
+        analyst_sign_off: "分析師簽核",
+        reviewer_sign_off: "覆核人簽核",
       } as Record<string, string>
     )[value] ?? value
   );
+}
+
+function zhMemoSections(a: Analysis): Record<string, string[]> {
+  const base = a.scenarios.find((item) => item.name === "base")!;
+  const downside = a.scenarios.find((item) => item.name === "downside")!;
+  const severe = a.scenarios.find((item) => item.name === "severe")!;
+  const amount = (value: Money) => money(value, "zh-TW");
+  const breach = (year: number | null) =>
+    year ? `第 ${year} 年` : "三年預測期內無";
+  return {
+    executive_recommendation: [
+      `建議：${outcome(a.decision.outcome, true)}；申請額 ${amount(a.capacity.requested)}；可支援額度 ${amount(a.capacity.recommended)}；債務人評等 ${a.scorecard.grade ?? "已阻擋"}。`,
+    ],
+    borrower_overview: [
+      `借款人：${a.case.borrower.legal_name}。業務、產業與所在地資料已保留於合成案件輸入。`,
+    ],
+    ownership_and_management: [
+      "合成案件未提供所有權明細；管理評估以營運風險證據紀錄為基礎。",
+    ],
+    business_model: [
+      a.case.borrower.description
+        ? "合成案件已提供業務模式說明；使用前仍須以獨立文件驗證。"
+        : "未提供商業模式說明。",
+    ],
+    industry_risk: [
+      `已記錄 ${a.case.business_risk.risks.length} 項主要風險及 ${a.case.business_risk.strengths.length} 項主要優勢。`,
+    ],
+    loan_request: [`借款人申請 ${amount(a.case.request.amount)}。`],
+    facility_structure: [
+      `額度類型 ${facilityType(a.decision.facility_type, true)}；${a.case.request.rate_type === "fixed" ? "固定" : "浮動"}利率；到期 ${a.decision.maturity_years} 年；攤還 ${a.decision.amortization_years} 年。`,
+    ],
+    loan_purpose: [purposeText(a.case.request.purpose, true)],
+    sources_and_uses: [
+      `擬議貸方資金來源 ${amount(a.case.request.amount)}；用途為${purposeText(a.case.request.purpose, true)}。未提供其他資金來源或用途。`,
+    ],
+    primary_repayment_source: [
+      a.decision.primary_repayment_source === "Operating cash flow"
+        ? "營運現金流"
+        : a.decision.primary_repayment_source,
+    ],
+    secondary_repayment_source: [
+      "合格擔保品與企業價值支援；分析未假設可成功再融資。",
+    ],
+    historical_financial_performance: [
+      `營收 ${amount(a.case.financials.revenue as Money)}；報告 EBITDA ${amount(a.adjustments.reported_ebitda)}；調整後 EBITDA ${amount(a.adjustments.adjusted_ebitda)}。`,
+      `LTM 狀態：${a.financial_spreading.ltm_status === "available" ? "可使用" : a.financial_spreading.ltm_status === "blocked" ? "已阻擋" : "舊版單期快照"}。`,
+    ],
+    financial_adjustments: [
+      `已核准調整 ${amount(a.adjustments.approved_adjustment)}；正向調整占比 ${(Number(a.adjustments.positive_adjustment_pct) * 100).toFixed(2)}%。`,
+    ],
+    capital_structure: [
+      `總債務與現金、權益均取自標準化 API 輸出；非受限現金 ${amount(a.case.financials.unrestricted_cash as Money)}；權益 ${amount(a.case.financials.equity as Money)}。`,
+    ],
+    debt_maturity_schedule: [
+      a.case.debt_instruments.length
+        ? `已提供 ${a.case.debt_instruments.length} 項逐筆債務工具與到期年度。`
+        : "未提供逐筆債務到期表。",
+    ],
+    key_ratios: [
+      `總槓桿 ${a.metrics.gross_leverage.value ?? "不具意義"} 倍；利息保障 ${a.metrics.interest_coverage.value ?? "不具意義"} 倍；DSCR ${a.metrics.dscr.value ?? "不具意義"} 倍。`,
+    ],
+    obligor_grade: [
+      `分數 ${a.scorecard.score ?? "已阻擋"}；評等 ${a.scorecard.grade ?? "已阻擋"}；資料信心 ${a.scorecard.confidence_score}/100。設施保障不會改變債務人評等。`,
+    ],
+    facility_protection: [
+      `設施保障分數 ${a.facility_protection.score}；類別 ${uiStatus(a.facility_protection.category, true)}；預期回收類別 ${uiStatus(a.facility_protection.expected_recovery_category, true)}。`,
+    ],
+    debt_capacity: [
+      `申請 ${amount(a.capacity.requested)}；建議 ${amount(a.capacity.recommended)}；約束條件：${a.capacity.binding_constraints.map((item) => bindingLabel(item, true)).join("、")}。`,
+    ],
+    base_case: [`首次財務契約違約：${breach(base.first_breach_year)}。`],
+    downside_case: [
+      `首次財務契約違約：${breach(downside.first_breach_year)}；流動性耗盡：${breach(downside.liquidity_exhaustion_year)}。`,
+    ],
+    severe_case: [
+      `首次財務契約違約：${breach(severe.first_breach_year)}；流動性耗盡：${breach(severe.liquidity_exhaustion_year)}。`,
+    ],
+    reverse_stress: [
+      `六個求解器中有 ${a.reverse_stress.solvers.filter((item) => item.converged).length} 個已收斂；未收斂結果不顯示數值。`,
+    ],
+    collateral_or_borrowing_base: [
+      a.borrowing_base.borrowing_base
+        ? `最終借款基礎 ${amount(a.borrowing_base.borrowing_base)}。`
+        : a.borrowing_base.applicable
+          ? "借款基礎因缺少合格擔保品輸入而阻擋。"
+          : "此額度不適用借款基礎。",
+    ],
+    indicative_pricing: [
+      `參考基準利率 ${(Number(a.pricing.reference_base_rate) * 100).toFixed(2)}%；風險利差 ${a.pricing.risk_grade_spread_bps} bps；示意全包利率 ${(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%。`,
+      "僅供教育用途，不代表即時市場報價或銀行承諾。",
+    ],
+    covenants: [
+      `共產生 ${a.covenants.length} 項維持性、發生性或報告型財務契約。`,
+    ],
+    policy_exceptions: [
+      a.decision.policy_exceptions.length
+        ? `共有 ${a.decision.policy_exceptions.length} 項政策警示需要授權處理。`
+        : "未識別政策例外。",
+    ],
+    conditions_precedent: a.decision.conditions.map((item) =>
+      conditionText(item, true),
+    ),
+    monitoring: [
+      "每季財務報表、年度財務契約遵循證明，以及重大不利事件即時通知。",
+    ],
+    data_limitations: [
+      "本案件使用合成資料，未執行真實文件、法規、制裁、詐欺或法律盡職調查。僅供教育用途。",
+    ],
+    analyst_sign_off: [
+      "分析人員：____________________",
+      `資料基準日：${a.case.data_as_of}`,
+    ],
+    reviewer_sign_off: [
+      "覆核人員：____________________",
+      `模型 ${a.engine_version}；政策 ${a.policy_version}。`,
+    ],
+  };
 }
 function isMoney(value: unknown): value is Money {
   return Boolean(value && typeof value === "object" && "amount_minor" in value);
@@ -504,11 +820,7 @@ function Inputs({
   function setFinancial(key: string, text: string) {
     const current = draft.financials[key];
     if (!isMoney(current)) return;
-    const parsed = parseMoneyInput(
-      text,
-      current.minor_unit_exponent,
-      language,
-    );
+    const parsed = parseMoneyInput(text, current.minor_unit_exponent, language);
     if (!parsed.ok) {
       setError(parsed.message);
       return;
@@ -626,6 +938,80 @@ function Inputs({
           />
         </label>
       </div>
+      {mode === "analyst" && (
+        <>
+          <FinancialSpreadEditor
+            value={draft.financial_spread}
+            language={language}
+            onChange={(financial_spread) =>
+              setDraft((value) => ({ ...value, financial_spread }))
+            }
+          />
+          <AdjustmentLogEditor
+            input={draft}
+            language={language}
+            onError={setError}
+            onChange={(normalization_adjustments) =>
+              setDraft((value) => ({
+                ...value,
+                normalization_adjustments,
+              }))
+            }
+          />
+        </>
+      )}
+      <BorrowingBaseEditor
+        input={draft}
+        language={language}
+        onError={setError}
+        onChange={(borrowing_base) =>
+          setDraft((value) => ({ ...value, borrowing_base }))
+        }
+      />
+      <section className="pricing-editor">
+        <h4>{zh ? "示意定價輸入" : "Indicative pricing inputs"}</h4>
+        <div className="input-grid">
+          <label>
+            {zh ? "參考基準利率（小數）" : "Reference base rate (decimal)"}
+            <input
+              value={draft.pricing?.reference_base_rate ?? "0.04"}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  pricing: {
+                    reference_base_rate: event.target.value,
+                    relationship_adjustment_bps:
+                      value.pricing?.relationship_adjustment_bps ?? 0,
+                    include_upfront_fee:
+                      value.pricing?.include_upfront_fee ?? false,
+                  },
+                }))
+              }
+            />
+          </label>
+          <label>
+            {zh ? "關係調整（bps）" : "Relationship adjustment (bps)"}
+            <input
+              type="number"
+              min="-200"
+              max="200"
+              value={draft.pricing?.relationship_adjustment_bps ?? 0}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  pricing: {
+                    reference_base_rate:
+                      value.pricing?.reference_base_rate ?? "0.04",
+                    relationship_adjustment_bps: Number(event.target.value),
+                    include_upfront_fee:
+                      value.pricing?.include_upfront_fee ?? false,
+                  },
+                }))
+              }
+            />
+          </label>
+        </div>
+      </section>
       <h4>{zh ? "財務與債務" : "Financials and debt"}</h4>
       <div className="input-grid">
         {shown.map(([key, value]) => (
@@ -659,6 +1045,16 @@ function Inputs({
           )}{" "}
           {zh ? "儲存變更" : "Save changes"}
         </button>
+        <button
+          className="button secondary"
+          type="button"
+          onClick={() => {
+            setDraft(structuredClone(input));
+            setError("");
+          }}
+        >
+          {zh ? "復原未儲存變更" : "Revert unsaved changes"}
+        </button>
         <span>
           {zh
             ? "儲存後舊分析會標記為過期，必須重新計算。"
@@ -685,6 +1081,12 @@ function Financials({
   const prior = a.case.financials.prior_revenue as Money;
   return (
     <>
+      <FinancialSpreadingPanel
+        analysis={a}
+        language={language}
+        locale={locale}
+        mode={mode}
+      />
       <div className="trend-strip">
         <div>
           <span>{zh ? "前期營收" : "Prior revenue"}</span>
@@ -716,7 +1118,7 @@ function Financials({
           ))}
       </div>
       {mode === "analyst" && (
-        <article className="panel table-panel">
+        <article className="panel table-panel" tabIndex={0}>
           <h3>{zh ? "完整計算溯源" : "Calculation lineage"}</h3>
           <table>
             <thead>
@@ -731,8 +1133,11 @@ function Financials({
             <tbody>
               {Object.values(a.metrics).map((value) => (
                 <tr key={value.metric_id}>
-                  <td>{value.label}</td>
-                  <td>{value.status}</td>
+                  <td>
+                    {metricName[value.metric_id]?.[zh ? 1 : 0] ??
+                      (zh ? "財務指標" : value.label)}
+                  </td>
+                  <td>{uiStatus(value.status, zh)}</td>
                   <td>{value.formula_id ?? "—"}</td>
                   <td>{value.policy_ref ?? "—"}</td>
                   <td>{value.model_version}</td>
@@ -772,7 +1177,7 @@ function Capacity({
           note={a.capacity.binding_constraints.join(", ")}
         />
       </div>
-      <article className="panel table-panel">
+      <article className="panel table-panel" tabIndex={0}>
         <h3>
           {zh ? "容量限制與適用性" : "Capacity constraints and applicability"}
         </h3>
@@ -789,7 +1194,7 @@ function Capacity({
           <tbody>
             {a.capacity.constraints.map((item) => (
               <tr key={item.key} className={item.binding ? "binding-row" : ""}>
-                <td>{item.label}</td>
+                <td>{zh ? bindingLabel(item.key, true) : item.label}</td>
                 <td>
                   {item.applicable ? (zh ? "是" : "Yes") : zh ? "不適用" : "No"}
                 </td>
@@ -801,9 +1206,13 @@ function Capacity({
                       : "Not applicable"}
                 </td>
                 <td>
-                  {item.binding ? (zh ? "具約束力" : "Binding") : item.status}
+                  {item.binding
+                    ? zh
+                      ? "具約束力"
+                      : "Binding"
+                    : uiStatus(item.status, zh)}
                 </td>
-                <td>{item.reason}</td>
+                <td>{zh ? "依案件輸入與版本化政策計算。" : item.reason}</td>
               </tr>
             ))}
           </tbody>
@@ -838,7 +1247,9 @@ function Risk({
         </div>
         <div>
           <p>{zh ? "信心程度" : "Confidence"}</p>
-          <strong className="word">{a.scorecard.confidence}</strong>
+          <strong className="word">
+            {uiStatus(a.scorecard.confidence, zh)}
+          </strong>
           <span>{a.scorecard.confidence_score}/100</span>
         </div>
       </div>
@@ -847,7 +1258,7 @@ function Risk({
           ? "合成示範資料，不代表真實資料品質評估。"
           : a.scorecard.synthetic_notice}
       </p>
-      <article className="panel table-panel">
+      <article className="panel table-panel" tabIndex={0}>
         <h3>{zh ? "評分組成" : "Score components"}</h3>
         <table>
           <thead>
@@ -865,16 +1276,18 @@ function Risk({
           <tbody>
             {a.scorecard.components.map((c) => (
               <tr key={c.key}>
-                <td>{c.key.replaceAll("_", " ")}</td>
-                <td>{c.status}</td>
+                <td>{riskFactorLabel(c.key, zh)}</td>
+                <td>{uiStatus(c.status, zh)}</td>
                 <td>{c.score}</td>
                 <td>{c.weight}%</td>
                 <td>{c.contribution}</td>
                 {mode === "analyst" && (
                   <td>
-                    {c.band}
+                    {uiStatus(c.band, zh)}
                     <br />
-                    <small>{c.evidence}</small>
+                    <small>
+                      {zh ? "證據與來源已保留於案件輸入。" : c.evidence}
+                    </small>
                   </td>
                 )}
               </tr>
@@ -887,7 +1300,7 @@ function Risk({
           <h3>{zh ? "信心驅動因素" : "Confidence drivers"}</h3>
           <ul>
             {a.scorecard.confidence_drivers.map((x) => (
-              <li key={x}>{x}</li>
+              <li key={x}>{confidenceText(x, zh)}</li>
             ))}
           </ul>
         </article>
@@ -895,12 +1308,77 @@ function Risk({
           <h3>{zh ? "改善方式" : "Improve confidence"}</h3>
           <ul>
             {a.scorecard.improvement_actions.map((x) => (
-              <li key={x}>{x}</li>
+              <li key={x}>{confidenceText(x, zh)}</li>
             ))}
           </ul>
         </article>
       </div>
     </>
+  );
+}
+
+function ScenarioLineChart({
+  title,
+  labels: chartLabels,
+  series,
+}: {
+  title: string;
+  labels: string[];
+  series: Array<{ label: string; values: number[] }>;
+}) {
+  const values = series.flatMap((item) => item.values);
+  const maximum = Math.max(...values, 1);
+  const minimum = Math.min(...values, 0);
+  const range = Math.max(1, maximum - minimum);
+  const x = (index: number) => 34 + index * 128;
+  const y = (value: number) => 128 - ((value - minimum) / range) * 96;
+  const description = series
+    .map((item) => `${item.label}: ${item.values.join(", ")}`)
+    .join("; ");
+  return (
+    <figure className="line-chart">
+      <figcaption>{title}</figcaption>
+      <svg
+        viewBox="0 0 330 165"
+        role="img"
+        aria-label={`${title}. ${description}`}
+      >
+        <line x1="34" y1="128" x2="310" y2="128" className="chart-axis" />
+        {series.map((item, seriesIndex) => {
+          const points = item.values
+            .map((value, index) => `${x(index)},${y(value)}`)
+            .join(" ");
+          return (
+            <g
+              key={item.label}
+              className={`chart-series series-${seriesIndex}`}
+            >
+              <polyline points={points} />
+              {item.values.map((value, index) => (
+                <circle
+                  key={`${item.label}-${index}`}
+                  cx={x(index)}
+                  cy={y(value)}
+                  r="3"
+                />
+              ))}
+            </g>
+          );
+        })}
+        {chartLabels.map((label, index) => (
+          <text key={label} x={x(index)} y="150" textAnchor="middle">
+            {label}
+          </text>
+        ))}
+      </svg>
+      <div className="chart-legend">
+        {series.map((item, index) => (
+          <span key={item.label} className={`legend-${index}`}>
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </figure>
   );
 }
 
@@ -985,7 +1463,7 @@ function Stress({
                   <dd>{money(y.refinancing_need, locale, true)}</dd>
                 </div>
               </dl>
-              <span className="status">{y.covenant_status}</span>
+              <span className="status">{uiStatus(y.covenant_status, zh)}</span>
             </article>
           ),
         )}
@@ -1007,7 +1485,7 @@ function Stress({
                 ] as const
               ).map((key) => (
                 <label key={key}>
-                  {key.replaceAll("_", " ")}
+                  {scenarioFieldName[key][zh ? 1 : 0]}
                   <input
                     value={draft.scenarios[name][key]}
                     onChange={(e) => change(name, key, e.target.value)}
@@ -1045,11 +1523,123 @@ function Stress({
                 : `Revenue decline to minimum DSCR: ${a.reverse_stress.dscr_minimum_revenue_decline}%`}
           </span>
           <small>
-            {a.reverse_stress.method} · {a.reverse_stress.iterations} iterations
-            · {a.reverse_stress.converged ? "converged" : "not converged"}
+            {zh ? "有界二分法" : a.reverse_stress.method} ·{" "}
+            {a.reverse_stress.iterations} {zh ? "次迭代" : "iterations"} ·{" "}
+            {a.reverse_stress.converged
+              ? zh
+                ? "已收斂"
+                : "converged"
+              : zh
+                ? "未收斂"
+                : "not converged"}
           </small>
         </div>
       </div>
+      <div className="stress-charts">
+        <ScenarioLineChart
+          title={
+            zh ? "下行情境：營收與 EBITDA" : "Downside: revenue and EBITDA"
+          }
+          labels={a.scenarios
+            .find((item) => item.name === "downside")!
+            .years.map(
+              (item) => `${zh ? "第" : "Y"}${item.year}${zh ? "年" : ""}`,
+            )}
+          series={[
+            {
+              label: zh ? "營收" : "Revenue",
+              values: a.scenarios
+                .find((item) => item.name === "downside")!
+                .years.map((item) => item.revenue.amount_minor),
+            },
+            {
+              label: "EBITDA",
+              values: a.scenarios
+                .find((item) => item.name === "downside")!
+                .years.map((item) => item.adjusted_ebitda.amount_minor),
+            },
+          ]}
+        />
+        <ScenarioLineChart
+          title={
+            zh ? "下行情境：期末現金與債務" : "Downside: ending cash and debt"
+          }
+          labels={a.scenarios
+            .find((item) => item.name === "downside")!
+            .years.map(
+              (item) => `${zh ? "第" : "Y"}${item.year}${zh ? "年" : ""}`,
+            )}
+          series={[
+            {
+              label: zh ? "期末現金" : "Ending cash",
+              values: a.scenarios
+                .find((item) => item.name === "downside")!
+                .years.map((item) => item.ending_cash.amount_minor),
+            },
+            {
+              label: zh ? "期末債務" : "Ending debt",
+              values: a.scenarios
+                .find((item) => item.name === "downside")!
+                .years.map((item) => item.ending_debt.amount_minor),
+            },
+          ]}
+        />
+      </div>
+      <details className="panel solver-details">
+        <summary>
+          {zh
+            ? "顯示六個反向壓力求解器"
+            : "Show all six reverse-stress solvers"}
+        </summary>
+        <div className="solver-grid">
+          {a.reverse_stress.solvers.map((solver) => (
+            <article key={solver.key}>
+              <span className={`pill ${solver.converged ? "pass" : "breach"}`}>
+                {solver.converged
+                  ? zh
+                    ? "已收斂"
+                    : "Converged"
+                  : zh
+                    ? "未收斂"
+                    : "Not converged"}
+              </span>
+              <h4>
+                {zh
+                  ? (
+                      {
+                        revenue_dscr: "營收跌幅與最低 DSCR",
+                        margin_leverage: "EBITDA 利潤率與最高槓桿",
+                        rate_coverage: "利率衝擊與最低保障",
+                        working_capital_liquidity: "營運資金使用與流動性",
+                        maximum_downside_loan: "下行情境最高貸款",
+                        maximum_severe_liquidity_loan: "嚴重情境流動性最高貸款",
+                      } as Record<string, string>
+                    )[solver.key]
+                  : solver.variable_solved}
+              </h4>
+              <strong>
+                {solver.result_money
+                  ? money(solver.result_money, locale, true)
+                  : (solver.result ?? "—")}
+              </strong>
+              <p>
+                {zh
+                  ? "以完整三年預測及版本化政策進行有界二分求解。"
+                  : solver.interpretation}
+              </p>
+              <small>
+                {solver.iterations} {zh ? "次迭代" : "iterations"} ·{" "}
+                {zh ? "殘差" : "residual"} {solver.residual ?? "—"}
+              </small>
+              {!solver.converged && (
+                <p className="solver-failure">
+                  {zh ? "在政策界限內無收斂解。" : solver.failure_reason}
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      </details>
       <details className="panel covenant-details">
         <summary>
           {zh ? "顯示完整財務契約表" : "Show full covenant table"}
@@ -1070,10 +1660,18 @@ function Stress({
                 <td>
                   {scenarioName(c.scenario, zh)} / {c.year}
                 </td>
-                <td>{c.name}</td>
-                <td>{c.actual}</td>
-                <td>{c.threshold}</td>
-                <td>{c.status}</td>
+                <td>{covenantLabel(c.name, zh)}</td>
+                <td>
+                  {zh && /[A-Za-z]{4,}/.test(c.actual)
+                    ? "依 API 計算"
+                    : c.actual}
+                </td>
+                <td>
+                  {zh && /[A-Za-z]{4,}/.test(c.threshold)
+                    ? "依政策設定"
+                    : c.threshold}
+                </td>
+                <td>{uiStatus(c.status, zh)}</td>
               </tr>
             ))}
           </tbody>
@@ -1122,7 +1720,7 @@ function Decision({
         <dl>
           <div>
             <dt>{zh ? "額度類型" : "Facility"}</dt>
-            <dd>{a.decision.facility_type}</dd>
+            <dd>{facilityType(a.decision.facility_type, zh)}</dd>
           </div>
           <div>
             <dt>{zh ? "到期／攤還" : "Maturity / amortization"}</dt>
@@ -1133,14 +1731,47 @@ function Decision({
           </div>
           <div>
             <dt>{zh ? "擔保" : "Collateral"}</dt>
-            <dd>{a.decision.collateral}</dd>
+            <dd>{structureText(a.decision.collateral, zh)}</dd>
           </div>
           <div>
             <dt>{zh ? "保證" : "Guarantee"}</dt>
-            <dd>{a.decision.guarantee}</dd>
+            <dd>{structureText(a.decision.guarantee, zh)}</dd>
+          </div>
+          <div>
+            <dt>{zh ? "利率類型／基準利率" : "Rate type / base rate"}</dt>
+            <dd>
+              {zh
+                ? a.case.request.rate_type === "fixed"
+                  ? "固定"
+                  : "浮動"
+                : a.case.request.rate_type}{" "}
+              · {(Number(a.pricing.reference_base_rate) * 100).toFixed(2)}%
+            </dd>
+          </div>
+          <div>
+            <dt>{zh ? "風險利差" : "Risk-grade spread"}</dt>
+            <dd>{a.pricing.risk_grade_spread_bps} bps</dd>
+          </div>
+          <div>
+            <dt>{zh ? "示意全包利率" : "Indicative all-in rate"}</dt>
+            <dd>
+              {(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%
+            </dd>
+          </div>
+          <div>
+            <dt>{zh ? "承諾費／前端費" : "Commitment / upfront fee"}</dt>
+            <dd>
+              {a.pricing.commitment_fee_bps ?? "—"} /{" "}
+              {a.pricing.upfront_fee_bps ?? "—"} bps
+            </dd>
           </div>
         </dl>
       </div>
+      <p className="synthetic-notice">
+        {zh
+          ? "僅供教育用途的示意定價；不代表即時市場報價、銀行承諾或授信建議。"
+          : a.pricing.disclaimer}
+      </p>
       <div className="two-column">
         <article className="panel">
           <h3>{zh ? "決策理由" : "Decision rationale"}</h3>
@@ -1165,7 +1796,7 @@ function Decision({
           </ul>
         </article>
       </div>
-      <article className="panel table-panel">
+      <article className="panel table-panel" tabIndex={0}>
         <h3>{zh ? "政策檢查" : "Policy checks"}</h3>
         <table>
           <thead>
@@ -1180,10 +1811,18 @@ function Decision({
           <tbody>
             {a.policy_checks.map((item) => (
               <tr key={item.key}>
-                <td>{item.label}</td>
-                <td>{item.actual}</td>
-                <td>{item.threshold}</td>
-                <td>{item.status}</td>
+                <td>{policyCheckLabel(item.key, zh)}</td>
+                <td>
+                  {zh && /[A-Za-z]{4,}/.test(item.actual)
+                    ? "依案件輸入"
+                    : item.actual}
+                </td>
+                <td>
+                  {zh && /[A-Za-z]{4,}/.test(item.threshold)
+                    ? "依版本化政策"
+                    : item.threshold}
+                </td>
+                <td>{uiStatus(item.status, zh)}</td>
                 <td>
                   {item.exception_allowed
                     ? zh
@@ -1225,6 +1864,7 @@ function Memo({
       setBusy(null);
     }
   }
+  const sections = zh ? zhMemoSections(a) : a.memo_sections;
   return (
     <article className="memo-paper">
       <header>
@@ -1232,11 +1872,11 @@ function Memo({
         <h2>{a.case.borrower.legal_name}</h2>
         <span>{a.case.data_as_of}</span>
       </header>
-      {Object.entries(a.memo_sections).map(([title, paragraphs]) => (
+      {Object.entries(sections).map(([title, paragraphs]) => (
         <section key={title}>
           <h3>{memoTitle(title, zh)}</h3>
-          {paragraphs.map((p) => (
-            <p key={p}>{memoParagraph(p, zh)}</p>
+          {paragraphs.map((p, paragraphIndex) => (
+            <p key={`${title}-${paragraphIndex}`}>{memoParagraph(p, zh)}</p>
           ))}
         </section>
       ))}
@@ -1385,7 +2025,7 @@ export function CaseWorkspace({
           <div>
             <strong>{data.input.borrower.legal_name}</strong>
             <small>
-              {data.status} · v{data.version}
+              {uiStatus(data.status, zh)} · v{data.version}
             </small>
           </div>
         </div>
@@ -1552,6 +2192,13 @@ export function CaseWorkspace({
           {workspaceSections[idx] === "capacity" && (
             <Capacity a={a} language={language} locale={locale} />
           )}{" "}
+          {workspaceSections[idx] === "facility" && (
+            <FacilityProtectionPage
+              analysis={a}
+              language={language}
+              locale={locale}
+            />
+          )}{" "}
           {workspaceSections[idx] === "risk" && (
             <Risk a={a} language={language} mode={mode} />
           )}{" "}
@@ -1575,6 +2222,13 @@ export function CaseWorkspace({
               }
             />
           )}
+          <GlossaryDrawer language={language} />
+          <AuditHistory
+            caseId={caseId}
+            currentVersion={data.version}
+            language={language}
+            onRestored={async () => setData(await api.getCase(caseId))}
+          />
         </main>
       </div>
     </>

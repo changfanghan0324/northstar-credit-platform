@@ -322,7 +322,7 @@ def runtime() -> dict[str, Any]:
 
 
 @app.get("/demo-cases")
-def demo_cases(_: SessionId) -> list[dict[str, Any]]:
+def demo_cases() -> list[dict[str, Any]]:
     output: list[dict[str, Any]] = []
     for case in list_demo_cases():
         result = analyze_case(case)
@@ -340,7 +340,7 @@ def demo_cases(_: SessionId) -> list[dict[str, Any]]:
 
 
 @app.get("/demo-cases/{slug}/template", response_model=CaseInput)
-def demo_template(slug: str, _: SessionId) -> CaseInput:
+def demo_template(slug: str) -> CaseInput:
     try:
         return load_demo_case(slug)
     except KeyError as error:

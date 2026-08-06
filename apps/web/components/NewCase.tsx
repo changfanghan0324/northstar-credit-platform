@@ -184,6 +184,7 @@ export function NewCase({ language }: { language: Language }) {
   const [error, setError] = useState("");
   const [review, setReview] = useState<ValidationPreview | null>(null);
   const [template, setTemplate] = useState("stable-manufacturer");
+  const [entryMode, setEntryMode] = useState<"guided" | "analyst">("guided");
   const initialized = useRef(false);
   const draftKey = `northstar-case-draft-${language}`;
 
@@ -257,8 +258,42 @@ export function NewCase({ language }: { language: Language }) {
     });
   }
   function patchRisk(key: string, value: string | string[]) {
-    if (input)
-      patchInput({ business_risk: { ...input.business_risk, [key]: value } });
+    if (!input) return;
+    const existing = input.business_risk.factor_evidence?.[key];
+    patchInput({
+      business_risk: {
+        ...input.business_risk,
+        [key]: value,
+        ...(typeof value === "string" && existing
+          ? {
+              factor_evidence: {
+                ...input.business_risk.factor_evidence,
+                [key]: { ...existing, score: value },
+              },
+            }
+          : {}),
+      },
+    });
+  }
+  function patchRiskEvidence(key: string, update: Record<string, string>) {
+    if (!input) return;
+    const current = input.business_risk.factor_evidence?.[key];
+    if (!current) return;
+    const next = {
+      ...current,
+      ...update,
+      last_updated: new Date().toISOString(),
+    };
+    patchInput({
+      business_risk: {
+        ...input.business_risk,
+        ...(update.score ? { [key]: update.score } : {}),
+        factor_evidence: {
+          ...input.business_risk.factor_evidence,
+          [key]: next,
+        },
+      },
+    });
   }
   function patchScenario(
     name: keyof CaseInput["scenarios"],
@@ -370,17 +405,53 @@ export function NewCase({ language }: { language: Language }) {
                 : "Build a complete, editable analysis and review it before calculation."}
             </p>
           </div>
-          <label>
-            {zh ? "合成起始範本" : "Synthetic starting template"}
-            <select
-              value={template}
-              onChange={(event) => setTemplate(event.target.value)}
-            >
-              <option value="stable-manufacturer">Stable manufacturer</option>
-              <option value="cyclical-distributor">Cyclical distributor</option>
-              <option value="software-services">Software services</option>
-            </select>
-          </label>
+          <div className="wizard-controls">
+            <label>
+              {zh ? "輸入模式" : "Entry mode"}
+              <select
+                value={entryMode}
+                onChange={(event) =>
+                  setEntryMode(event.target.value as "guided" | "analyst")
+                }
+              >
+                <option value="guided">
+                  {zh ? "引導模式（基本欄位）" : "Guided (essential fields)"}
+                </option>
+                <option value="analyst">
+                  {zh ? "分析師模式（完整明細）" : "Analyst (full detail)"}
+                </option>
+              </select>
+            </label>
+            <label>
+              {zh ? "合成起始範本" : "Synthetic starting template"}
+              <select
+                value={template}
+                onChange={(event) => setTemplate(event.target.value)}
+              >
+                <option value="stable-manufacturer">
+                  {zh ? "穩健製造商" : "Stable manufacturer"}
+                </option>
+                <option value="cyclical-distributor">
+                  {zh ? "週期性經銷商" : "Cyclical distributor"}
+                </option>
+                <option value="software-services">
+                  {zh ? "軟體服務公司" : "Software services"}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div className="wizard-progress" aria-live="polite">
+          <span>
+            {zh
+              ? `完成度 ${Math.round(((step + 1) / 7) * 100)}%`
+              : `${Math.round(((step + 1) / 7) * 100)}% complete`}
+          </span>
+          <span>
+            {zh
+              ? "草稿已自動儲存於此瀏覽器工作階段"
+              : "Draft autosaved in this browser session"}
+          </span>
         </div>
         <ol
           className="stepper"
@@ -500,9 +571,15 @@ export function NewCase({ language }: { language: Language }) {
                       patchRequest("facility_type", e.target.value)
                     }
                   >
-                    <option value="term_loan">Term loan</option>
-                    <option value="revolver">Revolver</option>
-                    <option value="asset_based">Asset-based</option>
+                    <option value="term_loan">
+                      {zh ? "定期貸款" : "Term loan"}
+                    </option>
+                    <option value="revolver">
+                      {zh ? "循環信用額度" : "Revolver"}
+                    </option>
+                    <option value="asset_based">
+                      {zh ? "資產基礎融資" : "Asset-based"}
+                    </option>
                   </select>
                 </label>
                 <label>
@@ -513,9 +590,13 @@ export function NewCase({ language }: { language: Language }) {
                       patchRequest("security_type", e.target.value)
                     }
                   >
-                    <option value="secured">Secured</option>
-                    <option value="unsecured">Unsecured</option>
-                    <option value="asset_based">Asset-based</option>
+                    <option value="secured">{zh ? "有擔保" : "Secured"}</option>
+                    <option value="unsecured">
+                      {zh ? "無擔保" : "Unsecured"}
+                    </option>
+                    <option value="asset_based">
+                      {zh ? "資產基礎" : "Asset-based"}
+                    </option>
                   </select>
                 </label>
                 <label>
@@ -524,8 +605,8 @@ export function NewCase({ language }: { language: Language }) {
                     value={input.request.rate_type}
                     onChange={(e) => patchRequest("rate_type", e.target.value)}
                   >
-                    <option value="fixed">Fixed</option>
-                    <option value="floating">Floating</option>
+                    <option value="fixed">{zh ? "固定" : "Fixed"}</option>
+                    <option value="floating">{zh ? "浮動" : "Floating"}</option>
                   </select>
                 </label>
                 <label>
@@ -602,16 +683,30 @@ export function NewCase({ language }: { language: Language }) {
                   : "Enter the core LTM and comparative income statement, cash-flow, and balance-sheet values. All amounts are USD."}
               </p>
               <div className="input-grid">
-                {moneyFields.slice(0, 9).map((key) => (
-                  <label key={key}>
-                    {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
-                    <input
-                      inputMode="decimal"
-                      value={formatMoneyInput(input.financials[key] as Money)}
-                      onChange={(e) => patchMoney(key, e.target.value)}
-                    />
-                  </label>
-                ))}
+                {moneyFields
+                  .slice(0, 9)
+                  .filter((key) =>
+                    entryMode === "analyst"
+                      ? true
+                      : [
+                          "revenue",
+                          "prior_revenue",
+                          "ebit",
+                          "depreciation_amortization",
+                          "cfo",
+                          "maintenance_capex",
+                        ].includes(key),
+                  )
+                  .map((key) => (
+                    <label key={key}>
+                      {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
+                      <input
+                        inputMode="decimal"
+                        value={formatMoneyInput(input.financials[key] as Money)}
+                        onChange={(e) => patchMoney(key, e.target.value)}
+                      />
+                    </label>
+                  ))}
                 <label>
                   {zh
                     ? "可用現金比例（小數）"
@@ -658,16 +753,31 @@ export function NewCase({ language }: { language: Language }) {
                   : "Reconcile aggregate debt first, then add each instrument used for interest, amortization, and maturity analysis."}
               </p>
               <div className="input-grid">
-                {moneyFields.slice(9).map((key) => (
-                  <label key={key}>
-                    {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
-                    <input
-                      inputMode="decimal"
-                      value={formatMoneyInput(input.financials[key] as Money)}
-                      onChange={(e) => patchMoney(key, e.target.value)}
-                    />
-                  </label>
-                ))}
+                {moneyFields
+                  .slice(9)
+                  .filter((key) =>
+                    entryMode === "analyst"
+                      ? true
+                      : [
+                          "cash_interest",
+                          "scheduled_principal",
+                          "long_term_debt",
+                          "unrestricted_cash",
+                          "current_assets",
+                          "current_liabilities",
+                          "minimum_operating_cash",
+                        ].includes(key),
+                  )
+                  .map((key) => (
+                    <label key={key}>
+                      {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
+                      <input
+                        inputMode="decimal"
+                        value={formatMoneyInput(input.financials[key] as Money)}
+                        onChange={(e) => patchMoney(key, e.target.value)}
+                      />
+                    </label>
+                  ))}
               </div>
               <h3>{zh ? "債務工具" : "Debt instruments"}</h3>
               {input.debt_instruments.map((item, index) => (
@@ -854,23 +964,107 @@ export function NewCase({ language }: { language: Language }) {
                   "diversification",
                   "management_policy",
                   "governance_event",
-                ].map((key) => (
-                  <label key={key}>
-                    {riskFieldLabel(key, zh)}
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={String(input.business_risk[key])}
-                      onChange={(e) => patchRisk(key, e.target.value)}
-                    />
-                    <small>
-                      {zh
-                        ? "評估分數與信心證據"
-                        : "Assessment score; support with evidence below"}
-                    </small>
-                  </label>
-                ))}
+                ].map((key) => {
+                  const evidence = input.business_risk.factor_evidence?.[key];
+                  const bandScores: Record<string, string> = {
+                    strong: "90",
+                    adequate: "75",
+                    moderate_concern: "55",
+                    weak: "35",
+                    severe_concern: "15",
+                  };
+                  return (
+                    <fieldset className="risk-evidence-card" key={key}>
+                      <legend>{riskFieldLabel(key, zh)}</legend>
+                      <label>
+                        {zh ? "評估區間" : "Assessment band"}
+                        <select
+                          value={evidence?.band ?? "adequate"}
+                          onChange={(event) =>
+                            patchRiskEvidence(key, {
+                              band: event.target.value,
+                              score: bandScores[event.target.value],
+                            })
+                          }
+                        >
+                          <option value="strong">{zh ? "強" : "Strong"}</option>
+                          <option value="adequate">
+                            {zh ? "良好" : "Adequate"}
+                          </option>
+                          <option value="moderate_concern">
+                            {zh ? "中度疑慮" : "Moderate concern"}
+                          </option>
+                          <option value="weak">{zh ? "偏弱" : "Weak"}</option>
+                          <option value="severe_concern">
+                            {zh ? "嚴重疑慮" : "Severe concern"}
+                          </option>
+                        </select>
+                      </label>
+                      {entryMode === "analyst" && (
+                        <label>
+                          {zh ? "數值分數" : "Numeric score"}
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={String(input.business_risk[key])}
+                            onChange={(event) =>
+                              patchRisk(key, event.target.value)
+                            }
+                          />
+                        </label>
+                      )}
+                      <label className="wide">
+                        {zh ? "證據陳述" : "Evidence statement"}
+                        <textarea
+                          value={evidence?.evidence ?? ""}
+                          onChange={(event) =>
+                            patchRiskEvidence(key, {
+                              evidence: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        {zh ? "來源" : "Source"}
+                        <input
+                          value={evidence?.source ?? ""}
+                          onChange={(event) =>
+                            patchRiskEvidence(key, {
+                              source: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        {zh ? "信心" : "Confidence"}
+                        <select
+                          value={evidence?.confidence ?? "medium"}
+                          onChange={(event) =>
+                            patchRiskEvidence(key, {
+                              confidence: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="high">{zh ? "高" : "High"}</option>
+                          <option value="medium">{zh ? "中" : "Medium"}</option>
+                          <option value="low">{zh ? "低" : "Low"}</option>
+                        </select>
+                      </label>
+                      <label className="wide">
+                        {zh ? "分析師理由" : "Analyst rationale"}
+                        <textarea
+                          value={evidence?.analyst_rationale ?? ""}
+                          onChange={(event) =>
+                            patchRiskEvidence(key, {
+                              analyst_rationale: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                    </fieldset>
+                  );
+                })}
                 <label className="wide">
                   {zh
                     ? "主要優勢與支持證據（每行一項）"
@@ -962,7 +1156,11 @@ export function NewCase({ language }: { language: Language }) {
                   </div>
                   <div>
                     <dt>{zh ? "情境" : "Scenarios"}</dt>
-                    <dd>Base · Downside · Severe</dd>
+                    <dd>
+                      {zh
+                        ? "基準 · 下行 · 嚴重壓力"
+                        : "Base · Downside · Severe"}
+                    </dd>
                   </div>
                   <div>
                     <dt>{zh ? "輸入驗證" : "Input validation"}</dt>

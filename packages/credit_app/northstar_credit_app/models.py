@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -14,9 +15,13 @@ class ContractModel(BaseModel):
 
 
 class MoneyValue(ContractModel):
-    amount_minor: int
-    currency: str = "USD"
-    minor_unit_exponent: int = 2
+    amount_minor: int = Field(
+        ge=-9_007_199_254_740_991,
+        le=9_007_199_254_740_991,
+        description="Exact signed minor units within JavaScript's safe-integer range.",
+    )
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    minor_unit_exponent: int = Field(default=2, ge=0, le=6)
 
     def engine(self) -> Money:
         return Money(
@@ -60,6 +65,210 @@ class DebtInstrumentInput(ContractModel):
     secured: bool = False
     seniority: str = "Senior"
     collateral: str = "None"
+
+
+class IncomeStatementPeriodInput(ContractModel):
+    revenue: MoneyValue | None = None
+    cogs: MoneyValue | None = None
+    gross_profit: MoneyValue | None = None
+    operating_expenses: MoneyValue | None = None
+    ebitda: MoneyValue | None = None
+    depreciation_amortization: MoneyValue | None = None
+    ebit: MoneyValue | None = None
+    cash_interest: MoneyValue | None = None
+    pretax_income: MoneyValue | None = None
+    cash_taxes: MoneyValue | None = None
+    net_income: MoneyValue | None = None
+
+
+class BalanceSheetPeriodInput(ContractModel):
+    cash: MoneyValue | None = None
+    restricted_cash: MoneyValue | None = None
+    accounts_receivable: MoneyValue | None = None
+    inventory: MoneyValue | None = None
+    current_assets: MoneyValue | None = None
+    ppe: MoneyValue | None = None
+    goodwill: MoneyValue | None = None
+    intangible_assets: MoneyValue | None = None
+    total_assets: MoneyValue | None = None
+    accounts_payable: MoneyValue | None = None
+    current_liabilities: MoneyValue | None = None
+    short_term_debt: MoneyValue | None = None
+    current_maturities: MoneyValue | None = None
+    long_term_debt: MoneyValue | None = None
+    lease_liabilities: MoneyValue | None = None
+    total_liabilities: MoneyValue | None = None
+    equity: MoneyValue | None = None
+
+
+class CashFlowPeriodInput(ContractModel):
+    operating_cash_flow: MoneyValue | None = None
+    working_capital_change: MoneyValue | None = None
+    capital_expenditures: MoneyValue | None = None
+    maintenance_capex: MoneyValue | None = None
+    acquisitions: MoneyValue | None = None
+    asset_sales: MoneyValue | None = None
+    dividends: MoneyValue | None = None
+    share_repurchases: MoneyValue | None = None
+    debt_issued: MoneyValue | None = None
+    debt_repaid: MoneyValue | None = None
+    free_cash_flow: MoneyValue | None = None
+
+
+class FinancialPeriodInput(ContractModel):
+    id: str
+    label: str
+    period_type: Literal["historical_fiscal_year", "quarter", "ytd", "ltm", "forecast"]
+    start_date: date
+    end_date: date
+    fiscal_year: int
+    fiscal_quarter: int | None = Field(default=None, ge=1, le=4)
+    audited: bool = False
+    source_type: Literal["audited", "reviewed", "management", "derived", "forecast"]
+    source_reference: str
+    currency: str = "USD"
+    scale: Literal["whole", "thousands", "millions"] = "whole"
+    income_statement: IncomeStatementPeriodInput = Field(
+        default_factory=IncomeStatementPeriodInput
+    )
+    balance_sheet: BalanceSheetPeriodInput = Field(
+        default_factory=BalanceSheetPeriodInput
+    )
+    cash_flow: CashFlowPeriodInput = Field(default_factory=CashFlowPeriodInput)
+
+    @model_validator(mode="after")
+    def validate_dates_and_source(self) -> FinancialPeriodInput:
+        if self.end_date < self.start_date:
+            raise ValueError("financial period end_date must not precede start_date")
+        if not self.source_reference.strip():
+            raise ValueError("financial period source_reference is required")
+        return self
+
+
+class FinancialSpreadInput(ContractModel):
+    periods: list[FinancialPeriodInput] = Field(default_factory=list)
+    selected_ltm_method: (
+        Literal[
+            "fiscal_year_plus_current_ytd_minus_prior_ytd",
+            "latest_four_quarters",
+            "reported_ltm",
+        ]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def validate_periods(self) -> FinancialSpreadInput:
+        ids = [period.id for period in self.periods]
+        if len(ids) != len(set(ids)):
+            raise ValueError("financial period ids must be unique")
+        quarters = [
+            period for period in self.periods if period.period_type == "quarter"
+        ]
+        for index, first in enumerate(quarters):
+            for second in quarters[index + 1 :]:
+                if max(first.start_date, second.start_date) <= min(
+                    first.end_date, second.end_date
+                ):
+                    raise ValueError("financial quarter periods must not overlap")
+        return self
+
+
+class NormalizationAdjustmentInput(ContractModel):
+    id: str
+    name: str
+    period_id: str
+    category: Literal[
+        "restructuring",
+        "litigation",
+        "impairment",
+        "acquisition_related",
+        "asset_sale_gain",
+        "one_time_compensation",
+        "government_support",
+        "related_party",
+        "owner_compensation",
+        "other",
+    ]
+    amount: MoneyValue
+    direction: Literal["positive", "negative"]
+    cash_classification: Literal["cash", "noncash"]
+    recurrence: Literal["recurring", "nonrecurring"]
+    ebitda_impact: MoneyValue
+    ebit_impact: MoneyValue
+    cfads_impact: MoneyValue
+    supporting_evidence: str
+    source_reference: str
+    analyst_rationale: str
+    approval_status: Literal["draft", "pending", "approved", "rejected"] = "draft"
+    reviewer: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_support(self) -> NormalizationAdjustmentInput:
+        if not self.analyst_rationale.strip():
+            raise ValueError("adjustment rationale is required")
+        if self.approval_status == "approved" and not self.supporting_evidence.strip():
+            raise ValueError("approved adjustment requires supporting evidence")
+        return self
+
+
+class BusinessRiskEvidenceInput(ContractModel):
+    score: Decimal = Field(ge=0, le=100)
+    band: Literal["strong", "adequate", "moderate_concern", "weak", "severe_concern"]
+    evidence: str
+    source: str
+    analyst_rationale: str
+    confidence: Literal["high", "medium", "low"]
+    override_status: Literal["none", "pending", "approved", "rejected"] = "none"
+    reviewer_status: Literal["unreviewed", "reviewed", "challenged"] = "unreviewed"
+    last_updated: datetime
+
+    @model_validator(mode="after")
+    def validate_evidence(self) -> BusinessRiskEvidenceInput:
+        if not self.evidence.strip() or not self.analyst_rationale.strip():
+            raise ValueError("business-risk evidence and rationale are required")
+        return self
+
+
+class AccountsReceivableBaseInput(ContractModel):
+    gross_receivables: MoneyValue
+    ineligible_receivables: MoneyValue
+    past_due_receivables: MoneyValue
+    cross_aged_receivables: MoneyValue
+    foreign_receivables: MoneyValue
+    concentration_reserve: MoneyValue
+    dilution_reserve: MoneyValue
+    advance_rate: Decimal = Field(ge=0, le=1)
+
+
+class InventoryBaseInput(ContractModel):
+    gross_inventory: MoneyValue
+    ineligible_inventory: MoneyValue
+    obsolete_inventory: MoneyValue
+    advance_rate: Decimal = Field(ge=0, le=1)
+    inventory_cap: MoneyValue
+
+
+class OtherCollateralInput(ContractModel):
+    equipment: MoneyValue
+    real_estate: MoneyValue
+    cash: MoneyValue
+    other: MoneyValue
+
+
+class BorrowingBaseInput(ContractModel):
+    accounts_receivable: AccountsReceivableBaseInput
+    inventory: InventoryBaseInput
+    other_collateral: OtherCollateralInput
+    additional_reserves: MoneyValue
+    prior_liens: MoneyValue
+
+
+class PricingInput(ContractModel):
+    reference_base_rate: Decimal = Field(ge=0, le=1)
+    relationship_adjustment_bps: int = Field(default=0, ge=-200, le=200)
+    include_upfront_fee: bool = False
 
 
 class FinancialInput(ContractModel):
@@ -111,6 +320,17 @@ class BusinessRiskInput(ContractModel):
     governance_event: Decimal = Field(ge=0, le=100)
     strengths: list[str]
     risks: list[str]
+    factor_evidence: dict[
+        Literal[
+            "industry",
+            "competitive_position",
+            "customer_concentration",
+            "diversification",
+            "management_policy",
+            "governance_event",
+        ],
+        BusinessRiskEvidenceInput,
+    ] = Field(default_factory=dict)
 
 
 class ScenarioInput(ContractModel):
@@ -128,6 +348,14 @@ class CaseInput(ContractModel):
     request: LoanRequestInput
     financials: FinancialInput
     business_risk: BusinessRiskInput
+    financial_spread: FinancialSpreadInput = Field(default_factory=FinancialSpreadInput)
+    normalization_adjustments: list[NormalizationAdjustmentInput] = Field(
+        default_factory=list
+    )
+    borrowing_base: BorrowingBaseInput | None = None
+    pricing: PricingInput = Field(
+        default_factory=lambda: PricingInput(reference_base_rate=Decimal("0.04"))
+    )
     debt_instruments: list[DebtInstrumentInput] = Field(default_factory=list)
     scenarios: dict[Literal["base", "downside", "severe"], ScenarioInput]
     data_as_of: str
@@ -191,6 +419,97 @@ class CapacityView(ContractModel):
     recommended: MoneyValue
     binding_constraints: list[str]
     constraints: list[CapacityConstraintView]
+
+
+class FinancialSpreadingView(ContractModel):
+    periods: list[FinancialPeriodInput]
+    historical_years: int
+    forecast_years: int
+    selected_ltm_method: str | None
+    ltm_period_id: str | None
+    ltm_status: Literal["available", "blocked", "legacy_snapshot"]
+    reconciliation_warnings: list[str]
+    trend: dict[str, list[str | None]]
+
+
+class AdjustmentSummaryView(ContractModel):
+    entries: list[NormalizationAdjustmentInput]
+    reported_ebitda: MoneyValue
+    approved_adjustment: MoneyValue
+    adjusted_ebitda: MoneyValue
+    positive_adjustment_pct: str
+    warning: str | None
+    leverage_before: str | None
+    leverage_after: str | None
+    dscr_before: str | None
+    dscr_after: str | None
+
+
+class FacilityProtectionView(ContractModel):
+    score: str
+    category: Literal["strong", "adequate", "moderate", "weak", "severe"]
+    expected_recovery_category: Literal["high", "moderate", "limited", "low"]
+    factors: dict[str, str]
+    main_protections: list[str]
+    main_structural_weaknesses: list[str]
+    required_improvements: list[str]
+    documentation_requirements: list[str]
+
+
+class BorrowingBaseView(ContractModel):
+    applicable: bool
+    status: Literal["calculated", "blocked", "not_applicable", "legacy_manual"]
+    gross_collateral: MoneyValue | None
+    eligibility_reductions: MoneyValue | None
+    eligible_receivables: MoneyValue | None
+    receivables_availability: MoneyValue | None
+    eligible_inventory: MoneyValue | None
+    inventory_availability: MoneyValue | None
+    other_eligible_collateral: MoneyValue | None
+    reserves: MoneyValue | None
+    prior_liens: MoneyValue | None
+    borrowing_base: MoneyValue | None
+    availability: MoneyValue | None
+    excess_or_deficiency: MoneyValue | None
+    binding_constraint: str
+    policy_notice: str
+
+
+class PricingView(ContractModel):
+    reference_base_rate: str
+    risk_grade_spread_bps: int
+    tenor_adjustment_bps: int
+    security_adjustment_bps: int
+    amortization_adjustment_bps: int
+    covenant_adjustment_bps: int
+    concentration_adjustment_bps: int
+    relationship_adjustment_bps: int
+    indicative_all_in_rate: str
+    commitment_fee_bps: int | None
+    upfront_fee_bps: int | None
+    disclaimer: str
+
+
+class SolverResultView(ContractModel):
+    key: Literal[
+        "revenue_dscr",
+        "margin_leverage",
+        "rate_coverage",
+        "working_capital_liquidity",
+        "maximum_downside_loan",
+        "maximum_severe_liquidity_loan",
+    ]
+    variable_solved: str
+    lower_bound: str
+    upper_bound: str
+    tolerance: str
+    iterations: int
+    residual: str | None
+    converged: bool
+    failure_reason: str | None
+    result: str | None
+    result_money: MoneyValue | None = None
+    interpretation: str
 
 
 class ScoreComponentView(ContractModel):
@@ -310,8 +629,8 @@ class DecisionView(ContractModel):
 
 class ReverseStressView(ContractModel):
     dscr_minimum_revenue_decline: str | None
-    leverage_breach_margin_decline: str
-    maximum_downside_loan: MoneyValue
+    leverage_breach_margin_decline: str | None
+    maximum_downside_loan: MoneyValue | None
     converged: bool
     method: Literal["bounded_bisection"] = "bounded_bisection"
     iterations: int
@@ -321,6 +640,7 @@ class ReverseStressView(ContractModel):
     upper_bound: str
     interpretation: str
     failure_reason: str | None = None
+    solvers: list[SolverResultView] = Field(default_factory=list)
 
 
 class AnalysisResult(ContractModel):
@@ -331,7 +651,12 @@ class AnalysisResult(ContractModel):
     input_hash: str
     calculated_at: str
     metrics: dict[str, RatioView]
+    financial_spreading: FinancialSpreadingView
+    adjustments: AdjustmentSummaryView
     capacity: CapacityView
+    facility_protection: FacilityProtectionView
+    borrowing_base: BorrowingBaseView
+    pricing: PricingView
     scorecard: ScorecardView
     scenarios: list[ScenarioView]
     covenants: list[CovenantView]

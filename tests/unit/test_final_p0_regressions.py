@@ -85,8 +85,8 @@ def test_nonconverged_reverse_stress_exposes_no_numeric_result() -> None:
     assert result.reverse_stress.converged is False
     assert result.reverse_stress.dscr_minimum_revenue_decline is None
     assert result.reverse_stress.failure_reason
-    memo = " ".join(result.memo_sections["scenario_and_reverse_stress"])
-    assert "unavailable" in memo
+    memo = " ".join(result.memo_sections["reverse_stress"])
+    assert "no converged result" in memo
     assert "None%" not in memo
 
 

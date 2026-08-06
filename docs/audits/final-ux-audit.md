@@ -33,3 +33,21 @@ Additional baseline defect: the wizard places `aria-live="polite"` around an ent
 Keep the accepted visual language and existing routes. Make complexity conditional: Guided mode should complete a valid synthetic analysis from essential fields, while Analyst mode exposes professional spreading and lineage. Do not add decorative redesign work until the new model and workflow are usable and testable.
 
 Status: pending independent Claude Opus 5 High challenge.
+
+## Final implementation verification
+
+The accepted navy/copper design was preserved. The workspace now has nine
+single-question pages, a mobile workflow dialog, Guided/Analyst mode, financial
+period and adjustment editors, facility-protection analysis, two accessible stress
+charts, solver details, glossary, and version/audit history. Traditional Chinese
+routes localize navigation, status, decisions, scenarios, constraints, score
+components, evidence, policy checks, errors, metadata, memo, PDF, 404, and dialog
+labels; a rendered nine-page leak test rejects known English interface copy.
+
+WCAG evidence includes axe WCAG 2.0/2.1/2.2 AA checks on public and professional
+workspace surfaces, a keyboard skip-link check, focus-trapped Escape-close dialogs,
+fieldset/legend form semantics, table captions, chart text alternatives, keyboard
+focus for horizontally scrollable tables, reduced-motion CSS, and desktop/mobile
+browser flows. The final browser smoke also records the production accessibility
+tree and responsive screenshots. PDF/UA tagging remains an explicit limitation;
+the web workspace is the primary accessible output.

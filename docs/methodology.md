@@ -1,9 +1,9 @@
 # Financial Methodology Contract
 
-Version: 1.0.0-draft  
-Date: 2026-08-03  
-Author: Codex  
-Required reviewer: Claude Opus 5 before engine implementation
+Version: 1.0.0
+Date: 2026-08-06
+Author: Codex
+Independent reviewer: Claude Opus 5 High (`claude-opus-5`)
 
 This document is the specification shared by the Python engine and the independent Excel reference model. It defines deterministic educational calculations, not a bank policy, agency rating, regulatory capital model, audited risk model, market quote, or lending advice.
 
@@ -267,6 +267,19 @@ Population standard deviation divided by the absolute mean over at least three c
 
 ## 8. Debt capacity
 
+### 8.0 Multi-period spreading and LTM
+
+Every structured period stores type, start/end date, fiscal year/quarter, source,
+currency, scale, audit state, and separate income-statement, balance-sheet, and
+cash-flow facts. Quarters cannot overlap. When the source data are available, LTM is
+either a reported LTM period, the sum of the latest four nonoverlapping quarters, or
+latest fiscal year plus current YTD less prior comparable YTD. Incompatible dates or
+missing components block the selected LTM method and retain the explanation.
+
+Assets are compared with liabilities plus equity to the minor-unit tolerance. The
+analysis exposes every reconciliation warning and never converts a failed
+reconciliation into zero.
+
 ### 8.1 Leverage capacity [Master prompt §25]
 
 `Maximum Total Debt = Maximum Allowed Leverage × Adjusted EBITDA`
@@ -296,6 +309,14 @@ Bullet capacity reports interest coverage, projected cash accumulation, exit lev
 `Collateral Capacity = Σ(Eligible Collateral Amount × Policy Advance Rate) − Prior Liens − Reserves`
 
 Each collateral class and advance rate remains visible.
+
+For an asset-based facility, eligible receivables equal gross receivables less
+ineligible, past-due, cross-aged, foreign, concentration, and dilution reductions.
+Eligible inventory equals gross inventory less ineligible and obsolete inventory.
+Policy caps both advance rates. Final borrowing base adds other eligible collateral
+and subtracts additional reserves and prior liens. It replaces the legacy manual
+collateral capacity for the asset-based constraint. Unsecured facilities mark the
+borrowing base not applicable.
 
 ### 8.5 Policy capacity and recommendation [Master prompt §25]
 
@@ -342,7 +363,28 @@ Minimum covenant headroom is `Actual − Required Minimum`; maximum covenant hea
 
 ## 11. Reverse stress
 
-Use a deterministic bounded solver, preferably binary search, for revenue decline at DSCR 1.00x, revenue decline at minimum DSCR, margin decline at leverage breach, rate increase at coverage breach, working-capital outflow at minimum cash, and maximum proposed loan passing downside policy. Each solver declares monotonic direction, lower/upper bounds, tolerance, maximum iterations, convergence status, and a no-solution state. [Master prompt §28]
+Every output uses the same deterministic bounded-bisection implementation and reruns
+the complete three-year forecast. The six solved variables are: revenue decline at
+minimum DSCR, EBITDA-margin decline at maximum leverage, interest-rate shock at
+minimum coverage, working-capital use at liquidity exhaustion, maximum proposed loan
+passing downside policy, and maximum proposed loan preserving severe minimum
+liquidity. Each record includes initial bounds, tolerance, iterations, residual,
+convergence status, failure reason, result, and interpretation. A nonconverged record
+never exposes a numeric result. [Master prompt §28]
+
+## 11.1 Facility protection and indicative pricing
+
+Facility protection is independent from the obligor grade. Versioned policy weights
+seniority, collateral quality/coverage, guarantee, amortization, maturity/refinancing,
+covenants, reporting, and purpose/repayment alignment. It produces a protection
+score/category, expected-recovery category, strengths, weaknesses, required
+improvements, and documentation requirements.
+
+Indicative pricing starts with a user-entered reference base rate, then adds
+versioned risk-grade, tenor, security, amortization, covenant, concentration, and
+optional relationship adjustments. Revolvers can include a commitment fee and an
+optional upfront fee. It is always labeled educational and is not a market quote,
+commitment, or recommendation.
 
 ## 12. Decision and memo
 
@@ -352,10 +394,41 @@ Memo sentences use only imported/synthetic source data, approved analyst inputs,
 
 ## 13. Confidence
 
-One categorical confidence result (`high`, `medium`, `low`, `blocked`) is derived from typed factors in policy. Factors include missing inputs, stale source, unreconciled balance sheet, manual override, large EBITDA adjustment, restatement, unreconcilable LTM, synthetic data, and material reweighting. Adding a factor cannot raise confidence. Missing critical input implies blocked confidence, null grade, and blocked decision. No numeric confidence is shown. [Master prompt §11.3, §22, §33]
+One categorical confidence result (`high`, `medium`, `low`, `blocked`) and a
+transparent 0-100 completeness indicator are derived from typed factors. Factors
+include missing inputs, absent instrument detail, unreviewed evidence, large EBITDA
+adjustment, unreconcilable LTM, and synthetic data. Adding a penalty cannot raise
+confidence. Missing critical input implies blocked confidence, null grade, and a
+blocked analysis. [Master prompt §11.3, §22, §33]
 
 ## 14. Reference golden case
 
 The first synthetic stable case uses USD and the following normalized LTM inputs (USD millions shown here; storage is integer cents): revenue 200; prior revenue 190; EBIT 28; D&A 12; approved positive EBITDA adjustments 2; approved negative adjustments 1; prior adjusted EBITDA 38; CFO 30; total capex 10; maintenance capex 8; cash taxes 5; increase in operating working capital 3; mandatory pension 1; cash interest 6; scheduled principal 8; no additional fixed charge in DSCR; gross debt components 5 + 5 + 60 + 5; unrestricted cash 20; cash-availability factor 80%; current assets 80; current liabilities 40; accounts receivable 30; inventory 25; other current assets 5; undrawn revolver 10; minimum operating cash 8; monthly stressed burn 3; equity 80; total liabilities 100; total assets 180; secured debt 30; contractual operating rent 4 used only in fixed-charge coverage with the EBITDAR add-back; net income 16; effective cash tax rate 25%; historical CFADS 22, 24, 23; historical FCF 18, 20, 19; historical revenue 180, 190, 200; historical EBITDA margins 19.0%, 20.0%, 20.5%. Capacity inputs are a USD 15 million request, a gross-debt 3.50x maximum leverage limit, 1.25x minimum DSCR, 8% fixed annual rate, five annual payments, USD 30 million collateral capacity, and USD 25 million policy capacity.
 
 Codex derives and hash-commits the numeric expected file and independent Excel formula specification before opening Claude's implementation diff. Plaintext values are revealed only after the implementation is complete; discrepancies are adjudicated against this contract and logged.
+
+## 15. Model and product limitations
+
+- Northstar is an educational, synthetic-data portfolio demonstration. It is not a
+  bank, rating agency, regulated underwriting system, market quote, legal opinion,
+  or lending commitment.
+- Public operation is Portfolio Demo Mode (Mode A): anonymous session ownership,
+  best-effort instance-local rate/PDF limits, a ten-case quota, and seven-day expiry.
+  There is no user authentication, authorization administration, encryption key
+  management, confidential-document ingestion, or regulated-data governance.
+- Mode A startup creates the three runtime aggregate tables from ORM metadata. The
+  Alembic sequence is migration lineage for a separately governed durable rollout;
+  operators must not run both schema owners against the same fresh database. A
+  future durable rollout must apply and validate migrations before enabling app
+  traffic, including checking for duplicate legacy case-version numbers.
+- The three bundled demonstration cases retain a legacy single-period snapshot so
+  they open immediately. Trend and calculated LTM conclusions remain explicitly
+  limited until a user supplies compatible, nonoverlapping multi-period statements.
+- Scenario and solver outputs are deterministic sensitivities, not probabilities.
+  A nonconverged solver publishes no numeric result.
+- Indicative pricing uses a user-supplied reference rate plus illustrative versioned
+  policy adjustments. It is not live pricing.
+- Monetary transport is limited to JavaScript's exact integer range in minor units.
+  Multi-currency consolidation and foreign-exchange translation are unsupported.
+- The localized PDFs embed Noto Sans TC and are visually verified, but they are not
+  tagged PDF/UA documents. The web application is the primary accessible interface.

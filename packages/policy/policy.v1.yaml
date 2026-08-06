@@ -15,6 +15,45 @@ minimum_collateral_coverage: "1.00"
 allowed_facility_types: ["term_loan", "revolver", "asset_based"]
 material_reweighting_pct: "15"
 blocked_reweighting_pct: "30"
+maximum_ar_advance_rate: "0.85"
+maximum_inventory_advance_rate: "0.65"
+facility_protection_weights:
+  seniority: "20"
+  collateral: "25"
+  guarantee: "10"
+  amortization: "15"
+  maturity: "10"
+  covenants: "10"
+  reporting: "5"
+  purpose_alignment: "5"
+pricing_grade_spreads_bps:
+  1: 175
+  2: 200
+  3: 225
+  4: 250
+  5: 300
+  6: 375
+  7: 475
+  8: 600
+  9: 800
+  10: 1000
+pricing_tenor_adjustments_bps:
+  short: 0
+  medium: 25
+  long: 75
+pricing_security_adjustments_bps:
+  unsecured: 75
+  secured: 0
+  asset_based: -25
+pricing_amortization_adjustments_bps:
+  amortizing: -10
+  bullet: 50
+pricing_covenant_adjustment_bps: 25
+pricing_concentration_adjustment_bps: 35
+pricing_commitment_fee_bps: 35
+pricing_upfront_fee_bps: 50
+solver_tolerance: "0.0001"
+solver_max_iterations: 80
 grade_labels:
   1: "Excellent"
   2: "Strong"

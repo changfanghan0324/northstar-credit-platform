@@ -3,6 +3,7 @@ export const workspaceSections = [
   "inputs",
   "financials",
   "capacity",
+  "facility",
   "risk",
   "stress",
   "decision",

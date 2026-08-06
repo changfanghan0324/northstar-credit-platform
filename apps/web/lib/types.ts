@@ -74,10 +74,79 @@ export type CaseInput = {
   business_risk: {
     strengths: string[];
     risks: string[];
+    factor_evidence?: Record<
+      string,
+      {
+        score: string;
+        band: string;
+        evidence: string;
+        source: string;
+        analyst_rationale: string;
+        confidence: string;
+        override_status: string;
+        reviewer_status: string;
+        last_updated: string;
+      }
+    >;
     [key: string]: unknown;
+  };
+  financial_spread?: {
+    periods: FinancialPeriod[];
+    selected_ltm_method: string | null;
+  };
+  normalization_adjustments?: Adjustment[];
+  borrowing_base?: BorrowingBaseInput | null;
+  pricing?: {
+    reference_base_rate: string;
+    relationship_adjustment_bps: number;
+    include_upfront_fee: boolean;
   };
   scenarios: Record<"base" | "downside" | "severe", ScenarioInput>;
   data_as_of: string;
+};
+export type BorrowingBaseInput = {
+  accounts_receivable: Record<string, Money | string>;
+  inventory: Record<string, Money | string>;
+  other_collateral: Record<string, Money>;
+  additional_reserves: Money;
+  prior_liens: Money;
+};
+export type FinancialPeriod = {
+  id: string;
+  label: string;
+  period_type: string;
+  start_date: string;
+  end_date: string;
+  fiscal_year: number;
+  fiscal_quarter: number | null;
+  audited: boolean;
+  source_type: string;
+  source_reference: string;
+  currency: string;
+  scale: "whole" | "thousands" | "millions";
+  income_statement: Record<string, Money | null>;
+  balance_sheet: Record<string, Money | null>;
+  cash_flow: Record<string, Money | null>;
+};
+export type Adjustment = {
+  id: string;
+  name: string;
+  period_id: string;
+  category: string;
+  amount: Money;
+  direction: "positive" | "negative";
+  cash_classification: "cash" | "noncash";
+  recurrence: "recurring" | "nonrecurring";
+  ebitda_impact: Money;
+  ebit_impact: Money;
+  cfads_impact: Money;
+  supporting_evidence: string;
+  source_reference: string;
+  analyst_rationale: string;
+  approval_status: string;
+  reviewer: string | null;
+  created_at: string;
+  updated_at: string;
 };
 export type CapacityConstraint = {
   key: string;
@@ -129,6 +198,28 @@ export type Analysis = {
   policy_version: string;
   engine_version: string;
   metrics: Record<string, Ratio>;
+  financial_spreading: {
+    periods: FinancialPeriod[];
+    historical_years: number;
+    forecast_years: number;
+    selected_ltm_method: string | null;
+    ltm_period_id: string | null;
+    ltm_status: "available" | "blocked" | "legacy_snapshot";
+    reconciliation_warnings: string[];
+    trend: Record<string, Array<string | null>>;
+  };
+  adjustments: {
+    entries: Adjustment[];
+    reported_ebitda: Money;
+    approved_adjustment: Money;
+    adjusted_ebitda: Money;
+    positive_adjustment_pct: string;
+    warning: string | null;
+    leverage_before: string | null;
+    leverage_after: string | null;
+    dscr_before: string | null;
+    dscr_after: string | null;
+  };
   capacity: {
     requested: Money;
     leverage: Money;
@@ -158,6 +249,48 @@ export type Analysis = {
       status: string;
       evidence: string;
     }>;
+  };
+  facility_protection: {
+    score: string;
+    category: string;
+    expected_recovery_category: string;
+    factors: Record<string, string>;
+    main_protections: string[];
+    main_structural_weaknesses: string[];
+    required_improvements: string[];
+    documentation_requirements: string[];
+  };
+  borrowing_base: {
+    applicable: boolean;
+    status: string;
+    gross_collateral: Money | null;
+    eligibility_reductions: Money | null;
+    eligible_receivables: Money | null;
+    receivables_availability: Money | null;
+    eligible_inventory: Money | null;
+    inventory_availability: Money | null;
+    other_eligible_collateral: Money | null;
+    reserves: Money | null;
+    prior_liens: Money | null;
+    borrowing_base: Money | null;
+    availability: Money | null;
+    excess_or_deficiency: Money | null;
+    binding_constraint: string;
+    policy_notice: string;
+  };
+  pricing: {
+    reference_base_rate: string;
+    risk_grade_spread_bps: number;
+    tenor_adjustment_bps: number;
+    security_adjustment_bps: number;
+    amortization_adjustment_bps: number;
+    covenant_adjustment_bps: number;
+    concentration_adjustment_bps: number;
+    relationship_adjustment_bps: number;
+    indicative_all_in_rate: string;
+    commitment_fee_bps: number | null;
+    upfront_fee_bps: number | null;
+    disclaimer: string;
   };
   scenarios: Array<{
     name: "base" | "downside" | "severe";
@@ -191,8 +324,8 @@ export type Analysis = {
   }>;
   reverse_stress: {
     dscr_minimum_revenue_decline: string | null;
-    leverage_breach_margin_decline: string;
-    maximum_downside_loan: Money;
+    leverage_breach_margin_decline: string | null;
+    maximum_downside_loan: Money | null;
     converged: boolean;
     method: string;
     iterations: number;
@@ -202,6 +335,20 @@ export type Analysis = {
     upper_bound: string;
     interpretation: string;
     failure_reason: string | null;
+    solvers: Array<{
+      key: string;
+      variable_solved: string;
+      lower_bound: string;
+      upper_bound: string;
+      tolerance: string;
+      iterations: number;
+      residual: string | null;
+      converged: boolean;
+      failure_reason: string | null;
+      result: string | null;
+      result_money: Money | null;
+      interpretation: string;
+    }>;
   };
   decision: {
     outcome: string;

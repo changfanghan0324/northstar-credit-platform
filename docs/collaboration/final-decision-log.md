@@ -50,3 +50,18 @@ This log is append-only for the final corrective cycle. A proposal is not a fina
 - Claude recommendation: Avoid overlapping questions; either use an anchored subsection or sharply split ownership.
 - Codex response: A dedicated page is required by the specification and is useful for lender-protection analysis.
 - Final decision: Dedicated Facility Protection page answers protection quality; Decision & Terms owns the proposed instrument and consumes protection/pricing outputs.
+
+## D-006 — Final independent diff disposition
+
+- Timestamp: `2026-08-06T17:57:22Z`
+- Question: Does the resulting implementation contain a deployment-blocking defect?
+- Claude recommendation: No blocker found; proceed after committing the embedded
+  Traditional Chinese font and verifying it in the serverless artifact.
+- Codex response: Accepted. Also resolved all user-visible/numerical nonblockers from
+  the review before the final test and deploy gate.
+- Final decision: Proceed only after the font/license, full verification suite,
+  production deployment, bilingual PDF smoke test, and responsive browser evidence
+  all pass.
+- Evidence: successful `claude-opus-5` session
+  `e780a0d1-7fc4-46a6-a258-65f54bef2b06`; detailed record in
+  `final-review-claude-opus-5.md`.
