@@ -94,6 +94,7 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 - [最終產品稽核](docs/audits/final-product-audit.md)
 - [最終模型稽核](docs/audits/final-model-audit.md)
 - [最終 UX 稽核](docs/audits/final-ux-audit.md)
+- [正式環境部署驗證](docs/audits/final-deployment-verification.md)
 - [最終 Claude Opus 5 High 審查](docs/collaboration/final-review-claude-opus-5.md)
 
 跨模型協作紀錄僅作為 repository 證據，不會在產品介面中當作行銷宣稱。

@@ -86,3 +86,23 @@ Local final gate on 2026-08-06:
 
 Production deployment and public alias verification are recorded after the release
 commit in the production verification section added below.
+
+## Production verification — 2026-08-06
+
+- Release application commit: `0bb216e` (`Bundle deploy-safe Noto Sans TC subset`).
+- Vercel production deployment: `dpl_32Cs6Ua26prafDw82ZvAFmanY3Ej`, state `READY`.
+- Public alias: `https://northstar-credit-platform.vercel.app`.
+- Vercel build completed the Next.js 16 TypeScript production build and packaged two
+  Node functions plus one Python function.
+- `/`, `/zh-TW`, `/health`, `/runtime`, the three-case demo catalog, demo-case open,
+  and a four-page Traditional Chinese detailed memo were exercised against the public
+  alias. The PDF contained embedded `NotoSansTC` and `ToUnicode` markers.
+- The open-source Noto Sans TC asset was subset to the characters used by the public
+  product (1,249 glyphs / 867 Unicode code points, approximately 298 KiB) so the same
+  licensed embedded font remains deployable under Vercel's per-file upload limit.
+- Codex in-app browser QA confirmed a 1440 by 1000 viewport, zero horizontal document
+  overflow, English homepage and debt-capacity rendering, Traditional Chinese facility
+  protection and borrowing-base rendering, Guided/Analyst switching, all nine workflow
+  links, and the version/audit and glossary controls.
+- The committed desktop/mobile Playwright suite remains the responsive evidence for
+  desktop Chromium and mobile Chromium; all eight tests passed in the final local gate.

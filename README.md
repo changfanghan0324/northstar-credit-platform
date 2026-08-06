@@ -105,6 +105,7 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [Final product audit](docs/audits/final-product-audit.md)
 - [Final model audit](docs/audits/final-model-audit.md)
 - [Final UX audit](docs/audits/final-ux-audit.md)
+- [Production deployment verification](docs/audits/final-deployment-verification.md)
 - [Final Claude Opus 5 High review](docs/collaboration/final-review-claude-opus-5.md)
 
 The independent collaboration record is repository evidence only; it is deliberately
