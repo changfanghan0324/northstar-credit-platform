@@ -51,6 +51,12 @@ class CreditPolicy(BaseModel):
     minimum_liquidity_minor: int
     maximum_maturity_months: int
     policy_capacity_minor: int
+    minimum_data_confidence_score: int = Field(ge=0, le=100)
+    maximum_ebitda_adjustment_pct: Decimal = Field(ge=0)
+    maximum_eligible_grade: int = Field(ge=1, le=10)
+    maximum_exposure_minor: int = Field(gt=0)
+    minimum_collateral_coverage: Decimal = Field(ge=0)
+    allowed_facility_types: list[str]
     grade_labels: dict[int, str]
     grade_bands: list[ScoreBand]
     leverage_bands: list[ScoreBand]

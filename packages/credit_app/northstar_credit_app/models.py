@@ -38,6 +38,28 @@ class LoanRequestInput(ContractModel):
     purpose: str
     annual_rate: Decimal = Field(gt=0, le=1)
     maturity_years: int = Field(gt=0, le=30)
+    facility_type: Literal["term_loan", "revolver", "asset_based"] = "term_loan"
+    security_type: Literal["unsecured", "secured", "asset_based"] = "secured"
+    rate_type: Literal["fixed", "floating"] = "fixed"
+    base_rate: Decimal = Field(default=Decimal("0"), ge=0, le=1)
+    rate_floor: Decimal = Field(default=Decimal("0"), ge=0, le=1)
+    amortization_years: int | None = Field(default=None, gt=0, le=30)
+    guarantee: str = "None"
+    primary_repayment_source: str = "Operating cash flow"
+
+
+class DebtInstrumentInput(ContractModel):
+    name: str
+    principal: MoneyValue
+    annual_rate: Decimal = Field(ge=0, le=1)
+    rate_type: Literal["fixed", "floating"] = "fixed"
+    spread: Decimal = Field(default=Decimal("0"), ge=0, le=1)
+    rate_floor: Decimal = Field(default=Decimal("0"), ge=0, le=1)
+    scheduled_amortization: MoneyValue
+    maturity_year: int = Field(default=3, ge=1, le=30)
+    secured: bool = False
+    seniority: str = "Senior"
+    collateral: str = "None"
 
 
 class FinancialInput(ContractModel):
@@ -77,6 +99,7 @@ class FinancialInput(ContractModel):
     contractual_rent: MoneyValue
     net_income: MoneyValue
     collateral_capacity: MoneyValue
+    tax_rate: Decimal = Field(default=Decimal("0.12"), ge=0, le=1)
 
 
 class BusinessRiskInput(ContractModel):
@@ -92,6 +115,7 @@ class BusinessRiskInput(ContractModel):
 
 class ScenarioInput(ContractModel):
     revenue_growth: Decimal
+    subsequent_growth: Decimal = Decimal("0")
     ebitda_margin_change: Decimal
     rate_shock: Decimal
     working_capital_pct_revenue: Decimal = Field(ge=0, le=1)
@@ -99,11 +123,12 @@ class ScenarioInput(ContractModel):
 
 
 class CaseInput(ContractModel):
-    slug: str
+    slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$")
     borrower: BorrowerInput
     request: LoanRequestInput
     financials: FinancialInput
     business_risk: BusinessRiskInput
+    debt_instruments: list[DebtInstrumentInput] = Field(default_factory=list)
     scenarios: dict[Literal["base", "downside", "severe"], ScenarioInput]
     data_as_of: str
 
@@ -111,6 +136,23 @@ class CaseInput(ContractModel):
     def validate_scenarios(self) -> CaseInput:
         if set(self.scenarios) != {"base", "downside", "severe"}:
             raise ValueError("base, downside, and severe scenarios are required")
+        currencies: set[str] = set()
+
+        def collect(value: object) -> None:
+            if isinstance(value, dict):
+                if "amount_minor" in value and "currency" in value:
+                    currencies.add(str(value["currency"]))
+                for nested in value.values():
+                    collect(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    collect(nested)
+
+        collect(self.model_dump(mode="python"))
+        if len(currencies) > 1:
+            raise ValueError(
+                "currency mismatch: all monetary inputs must use one reporting currency"
+            )
         return self
 
 
@@ -120,16 +162,35 @@ class RatioView(ContractModel):
     value: str | None
     reason_code: str
     label: str
+    plain_label: str
+    formula_id: str | None = None
+    policy_ref: str | None = None
+    direction: Literal["higher_is_better", "lower_is_better", "neutral"] = "neutral"
+    source_period: str | None = None
+    components: list[dict[str, str | None]] = Field(default_factory=list)
+    model_version: str
+
+
+class CapacityConstraintView(ContractModel):
+    key: str
+    label: str
+    amount: MoneyValue | None
+    applicable: bool
+    status: Literal["valid", "blocked", "policy_not_applicable"]
+    reason: str
+    policy_ref: str | None = None
+    binding: bool = False
 
 
 class CapacityView(ContractModel):
     requested: MoneyValue
     leverage: MoneyValue
     dscr: MoneyValue
-    collateral: MoneyValue
+    collateral: MoneyValue | None
     policy: MoneyValue
     recommended: MoneyValue
     binding_constraints: list[str]
+    constraints: list[CapacityConstraintView]
 
 
 class ScoreComponentView(ContractModel):
@@ -138,14 +199,23 @@ class ScoreComponentView(ContractModel):
     weight: str
     contribution: str
     band: str
+    status: Literal["valid", "adverse", "blocked"] = "valid"
+    evidence: str = "Calculated from supplied synthetic inputs"
 
 
 class ScorecardView(ContractModel):
-    score: str
-    grade: int
+    score: str | None
+    grade: int | None
     grade_label: str
     components: list[ScoreComponentView]
     confidence: Literal["high", "medium", "low", "blocked"]
+    confidence_score: int
+    confidence_drivers: list[str]
+    confidence_penalties: list[str]
+    improvement_actions: list[str]
+    synthetic_notice: str = (
+        "Synthetic demonstration — not a real data-quality assessment"
+    )
 
 
 class ScenarioYearView(ContractModel):
@@ -154,7 +224,15 @@ class ScenarioYearView(ContractModel):
     adjusted_ebitda: MoneyValue
     cfads: MoneyValue
     ending_debt: MoneyValue
+    beginning_debt: MoneyValue
+    new_facility: MoneyValue
+    scheduled_amortization: MoneyValue
+    optional_paydown: MoneyValue
+    average_debt: MoneyValue
     ending_cash: MoneyValue
+    cash_shortfall: MoneyValue
+    revolver_draw: MoneyValue
+    refinancing_need: MoneyValue
     leverage: str
     interest_coverage: str
     dscr: str
@@ -175,6 +253,23 @@ class CovenantView(ContractModel):
     status: Literal["pass", "breach"]
     scenario: str
     year: int
+    frequency: Literal["monthly", "quarterly", "annual"] = "quarterly"
+    rationale: str = "Protects debt repayment capacity"
+    cure: str = "Equity cure or lender waiver subject to policy"
+    covenant_type: Literal["maintenance", "incurrence", "reporting"] = "maintenance"
+
+
+class PolicyCheckView(ContractModel):
+    key: str
+    label: str
+    status: Literal["pass", "warning", "hard_stop", "not_applicable"]
+    severity: Literal["informational", "warning", "hard_stop"]
+    actual: str
+    threshold: str
+    exception_allowed: bool
+    remediation: str
+    required_approval: str = "Credit officer"
+    decision_impact: str = "Informational"
 
 
 class DecisionView(ContractModel):
@@ -189,6 +284,14 @@ class DecisionView(ContractModel):
     conditions: list[str]
     primary_repayment_source: str
     secondary_repayment_source: str
+    facility_type: str
+    maturity_years: int
+    amortization_years: int
+    collateral: str
+    guarantee: str
+    monitoring: list[str]
+    policy_exceptions: list[str]
+    decision_priority: str
 
 
 class ReverseStressView(ContractModel):
@@ -196,6 +299,13 @@ class ReverseStressView(ContractModel):
     leverage_breach_margin_decline: str
     maximum_downside_loan: MoneyValue
     converged: bool
+    method: Literal["bounded_bisection"] = "bounded_bisection"
+    iterations: int
+    tolerance: str
+    residual: str
+    lower_bound: str
+    upper_bound: str
+    interpretation: str
 
 
 class AnalysisResult(ContractModel):
@@ -210,6 +320,8 @@ class AnalysisResult(ContractModel):
     scorecard: ScorecardView
     scenarios: list[ScenarioView]
     covenants: list[CovenantView]
+    policy_checks: list[PolicyCheckView]
     reverse_stress: ReverseStressView
     decision: DecisionView
     memo_sections: dict[str, list[str]]
+    analysis_status: Literal["final", "blocked"] = "final"

@@ -54,3 +54,21 @@
 - Risk: an unauthenticated deployed API can be polluted.
 - Resolution: public deployment is fixture-backed and read-only; routes are denied by explicit allowlist rather than HTTP method alone. Full writes are local-only.
 - Status: resolved.
+
+## D-009 — Zero capacity and non-applicable collateral
+
+- Claude position: a zero capacity result cannot be referred for discretionary
+  approval, and collateral must not enter the minimum when the facility is unsecured.
+- Codex response: accepted. Every capacity row now carries applicability and typed
+  status; zero supported exposure precedes grade and referral logic and returns
+  `Decline`.
+- Status: resolved; regression tests added.
+
+## D-010 — Production database availability
+
+- Product requirement: durable anonymous PostgreSQL persistence with seven-day TTL.
+- Observed external state: the connected Supabase account contains no projects.
+- Resolution: implement the complete schema/migration and runtime contract, deploy in
+  explicitly labeled temporary-session mode, and require user authorization before
+  creating a potentially billable database project.
+- Status: operationally constrained, not misrepresented as complete persistence.

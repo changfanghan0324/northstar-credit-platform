@@ -79,3 +79,15 @@ Each entry must include:
 - Non-blocking backlog: the round-1 F5–F9 advisories remain recorded for later work;
   Claude explicitly determined they do not gate Task 1 acceptance.
 - Final disposition: `approved`.
+
+### 2026-08-05 — Northstar complete corrective prompt v3
+
+- Author and implementation owner: Codex.
+- Independent reviewer: Claude Opus 5, high effort, Claude Code 2.1.221.
+- Sessions: architecture review `4e5cf32e-a497-4f30-8e74-4ed5c1354641`; final round one `ad9b10bf-5304-4a42-9e9b-7f6fa2e2cda4`; final round two `7604e3b5-e323-45f3-9a18-ab9ad73992a3`.
+- Scope: corrective master prompt, credit engine, application model, policy, API, persistence and migration, session ownership, web workflow, localization, PDF, tests, and deployment configuration.
+- Hunk coverage: round-one and round-two reviewers read the active implementation and diff line-by-line under read-only permissions; Claude did not edit repository files.
+- Independent reproduction: round two ran `./scripts/verify`, exited 0, and reproduced 79 passing tests plus all static and production-build gates.
+- Findings: round one rejected three P0 defects. Round two confirmed all three were resolved and found no new P0; thirteen P1 closeout items were recorded and subsequently addressed by Codex.
+- Evidence: `v3-final-review-claude-round1.md`, `v3-final-review-claude-round2.md`, `browser-qa-v3.md`, and `implementation-task-board-v3.md`.
+- Final reviewer disposition: `approved-with-required-fixes`; required fixes completed after the recorded review, with final repository and browser verification owned by Codex.

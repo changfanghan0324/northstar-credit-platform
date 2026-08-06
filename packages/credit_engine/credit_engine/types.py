@@ -21,10 +21,14 @@ RATIO_QUANTUM = Decimal("0.0001")
 class RatioStatus(str, Enum):
     """Outcome class of a metric evaluation (methodology §1.3)."""
 
-    OK = "ok"
-    NM = "nm"
-    MISSING = "missing"
-    ERROR = "error"
+    # Member names remain source-compatible with the original engine while the
+    # serialized values implement the public v3 calculation-state contract.
+    OK = "valid"
+    NM = "not_meaningful"
+    MISSING = "missing_input"
+    ERROR = "invalid_denominator"
+    BLOCKED = "blocked"
+    POLICY_NOT_APPLICABLE = "policy_not_applicable"
 
 
 class RatioReason(str, Enum):

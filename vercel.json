@@ -12,8 +12,10 @@
   },
   "rewrites": [
     {"source": "/health", "destination": "/api/index"},
+    {"source": "/runtime", "destination": "/api/index"},
     {"source": "/demo-cases", "destination": "/api/index"},
     {"source": "/demo-cases/:path*", "destination": "/api/index"},
+    {"source": "/cases", "destination": "/api/index"},
     {"source": "/cases/:path*", "destination": "/api/index"}
   ],
   "headers": [

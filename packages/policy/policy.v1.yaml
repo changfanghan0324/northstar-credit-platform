@@ -7,6 +7,12 @@ minimum_interest_coverage: "2.00"
 minimum_liquidity_minor: 800000000
 maximum_maturity_months: 60
 policy_capacity_minor: 2500000000
+minimum_data_confidence_score: 60
+maximum_ebitda_adjustment_pct: "0.25"
+maximum_eligible_grade: 8
+maximum_exposure_minor: 2500000000
+minimum_collateral_coverage: "1.00"
+allowed_facility_types: ["term_loan", "revolver", "asset_based"]
 material_reweighting_pct: "15"
 blocked_reweighting_pct: "30"
 grade_labels:

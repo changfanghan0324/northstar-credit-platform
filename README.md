@@ -17,8 +17,8 @@ credit-memo PDF.
 - Traditional Chinese: `/zh-TW/`
 - Three synthetic cases: stable manufacturer, cyclical distributor, and software
   services
-- Workspace: Overview, Inputs, Financials, Risk, Stress & Covenants, Decision, and
-  Credit Memo
+- Workspace: Overview, Inputs, Financials, Debt Capacity, Risk, Stress & Covenants,
+  Decision & Terms, and Credit Memo
 - Modes: Guided and Analyst are two presentations of the same persisted inputs and
   calculated outputs
 
@@ -45,8 +45,9 @@ SQLAlchemy repository + Alembic migrations
 
 Production accepts a PostgreSQL connection through `DATABASE_URL`. Local and
 ephemeral demonstration environments use a SQLite fallback in `/tmp`; public cases
-are anonymous and session-scoped. Monetary values cross every boundary as integer
-minor units, while ratio values are serialized as decimal strings.
+are anonymous and session-scoped. The `/runtime` endpoint and case-list banner state
+whether persistence is durable or temporary. Monetary values cross every boundary as
+integer minor units, while ratio values are serialized as decimal strings.
 
 ## Run locally
 
@@ -74,7 +75,7 @@ The development web app uses `http://127.0.0.1:8000` through
 PYTHON_BIN=.venv-rebuilt/bin/python ./scripts/verify
 ```
 
-The current delivery passes 63 Python tests with 99.53% branch-aware engine
+The current delivery passes 79 Python tests with 99.54% branch-aware engine
 coverage, Ruff lint and formatting, strict Mypy, strict TypeScript, ESLint, and a
 Next.js production build. Browser QA covers the English and Traditional Chinese
 homepages, a 390px mobile viewport, sample-case opening, custom-case creation,
@@ -90,6 +91,8 @@ memo PDF generation.
 - [Corrective decision log](docs/collaboration/decision-log.md)
 - [Claude Opus 5 High configuration evidence](docs/collaboration/model-config.md)
 - [Independent Claude review](docs/collaboration/corrective-debate-claude.md)
+- [v3 corrective audit](docs/audits/pre-correction-audit.md)
+- [v3 Claude review and Codex response](docs/collaboration/v3-claude-opus-5-review.md)
 
 The independent collaboration record is repository evidence only; it is deliberately
 not used as a product-interface marketing claim.

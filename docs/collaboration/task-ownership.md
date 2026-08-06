@@ -16,3 +16,13 @@ Status: resolved after two structured debate rounds
 | Accessibility implementation and methodology/limitations review | Claude Opus 5 | Codex | Axe, keyboard, grayscale, clear limitations |
 
 Every changed file is reviewed by the non-author. Each review cites a diff fingerprint or commit SHA, covers every hunk, records a disposition, and is repeated after required fixes.
+
+## v3 corrective ownership — 2026-08-05
+
+| Workstream | Author | Independent reviewer | State |
+|---|---|---|---|
+| Typed ratios, score blocking, capacity applicability, policy priority | Codex | Claude Opus 5 High | Round-1 findings implemented; final re-review required |
+| Three-year roll-forward, reverse-stress solver, confidence | Codex | Claude Opus 5 High | Round-1 findings implemented; final re-review required |
+| Session ownership, API lifecycle, normalized migration, operational controls | Codex | Claude Opus 5 High | Implemented; production PostgreSQL externally constrained |
+| Seven-step wizard, case management, eight-page workspace, EN/zh-TW | Codex | Claude Opus 5 High | Implemented; browser review pending |
+| Localized executive/detailed PDF and pagination | Codex | Claude Opus 5 High | Implemented; final re-review and browser download pending |

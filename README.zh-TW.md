@@ -14,7 +14,7 @@ Northstar 是一套完整的教育用途企業授信工作區。它會把標準�
 - 英文：`/`
 - 繁體中文：`/zh-TW/`
 - 三個合成案例：穩健製造商、週期性經銷商、軟體服務公司
-- 工作區：總覽、輸入、財務分析、風險、壓力測試與契約、決策、授信備忘錄
+- 工作區：總覽、輸入、財務分析、債務容量、風險、壓力測試與契約、決策與條件、授信備忘錄
 - 模式：Guided 與 Analyst 只是同一組持久化輸入與計算輸出的兩種呈現方式
 
 所有借款人資料均為合成資料。Northstar 是教育與作品集展示，不是銀行、評等
@@ -39,8 +39,9 @@ SQLAlchemy 儲存層 + Alembic migrations
 ```
 
 正式環境透過 `DATABASE_URL` 接受 PostgreSQL 連線；本機與暫時性展示環境會回退
-使用 `/tmp` 內的 SQLite。公開案件採匿名、session 隔離。所有貨幣跨邊界時皆以
-整數最小貨幣單位傳送，比率則序列化為十進位字串。
+使用 `/tmp` 內的 SQLite。公開案件採匿名、session 隔離；`/runtime` API 與案件
+列表會如實顯示目前是持久或暫時模式。所有貨幣跨邊界時皆以整數最小貨幣單位
+傳送，比率則序列化為十進位字串。
 
 ## 本機執行
 
@@ -68,7 +69,7 @@ pnpm dev
 PYTHON_BIN=.venv-rebuilt/bin/python ./scripts/verify
 ```
 
-目前交付通過 63 項 Python 測試，信用引擎分支感知覆蓋率為 99.53%，並通過
+目前交付通過 79 項 Python 測試，信用引擎分支感知覆蓋率為 99.54%，並通過
 Ruff lint／格式、Strict Mypy、Strict TypeScript、ESLint 與 Next.js production
 build。瀏覽器 QA 另涵蓋英／繁中首頁、390px 手機版、開啟範例、自訂案件建立、
 session 隔離、Guided／Analyst 數值一致、壓力與契約呈現，以及備忘錄 PDF。
@@ -82,5 +83,7 @@ session 隔離、Guided／Analyst 數值一致、壓力與契約呈現，以及�
 - [修正決策紀錄](docs/collaboration/decision-log.md)
 - [Claude Opus 5 High 設定證據](docs/collaboration/model-config.md)
 - [Claude 獨立審查](docs/collaboration/corrective-debate-claude.md)
+- [v3 修正前稽核](docs/audits/pre-correction-audit.md)
+- [v3 Claude 審查與 Codex 回應](docs/collaboration/v3-claude-opus-5-review.md)
 
 跨模型協作紀錄僅作為 repository 證據，不會在產品介面中當作行銷宣稱。

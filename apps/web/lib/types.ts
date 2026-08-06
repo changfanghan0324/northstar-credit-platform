@@ -1,37 +1,80 @@
 export type Money = { amount_minor: number; currency: string; minor_unit_exponent: number };
-export type Ratio = { metric_id: string; status: string; value: string | null; reason_code: string; label: string };
+export type Ratio = {
+  metric_id: string; status: string; value: string | null; reason_code: string;
+  label: string; plain_label: string; formula_id: string | null; policy_ref: string | null;
+  direction: string; source_period: string | null; model_version: string;
+};
+export type Borrower = { legal_name: string; industry: string; headquarters: string; description: string };
+export type LoanRequest = {
+  amount: Money; purpose: string; annual_rate: string; maturity_years: number;
+  facility_type: "term_loan" | "revolver" | "asset_based";
+  security_type: "unsecured" | "secured" | "asset_based";
+  rate_type: "fixed" | "floating"; base_rate: string; rate_floor: string;
+  amortization_years: number | null; guarantee: string; primary_repayment_source: string;
+};
 export type DemoCase = {
-  slug: string;
-  borrower: { legal_name: string; industry: string; headquarters: string; description: string };
-  request: { amount: Money; purpose: string; annual_rate: string; maturity_years: number };
+  slug: string; borrower: Borrower; request: LoanRequest;
   decision: { outcome: string; rationale: string[]; conditions: string[] };
-  grade: number;
-  recommended: Money;
+  grade: number | null; recommended: Money;
+};
+export type ScenarioInput = {
+  revenue_growth: string; subsequent_growth: string; ebitda_margin_change: string; rate_shock: string;
+  working_capital_pct_revenue: string; maintenance_capex_pct_revenue: string;
+};
+export type DebtInstrument = {
+  name: string; principal: Money; annual_rate: string; rate_type: "fixed" | "floating";
+  spread: string; rate_floor: string; scheduled_amortization: Money; maturity_year: number;
+  secured: boolean; seniority: string; collateral: string;
 };
 export type CaseInput = {
-  slug: string;
-  borrower: DemoCase["borrower"];
-  request: DemoCase["request"];
+  slug: string; borrower: Borrower; request: LoanRequest;
   financials: Record<string, Money | string>;
+  debt_instruments: DebtInstrument[];
   business_risk: { strengths: string[]; risks: string[]; [key: string]: unknown };
-  scenarios: Record<string, unknown>;
+  scenarios: Record<"base" | "downside" | "severe", ScenarioInput>;
   data_as_of: string;
 };
+export type CapacityConstraint = {
+  key: string; label: string; amount: Money | null; applicable: boolean;
+  status: "valid" | "blocked" | "policy_not_applicable"; reason: string;
+  policy_ref: string | null; binding: boolean;
+};
 export type ScenarioYear = {
-  year: number; revenue: Money; adjusted_ebitda: Money; cfads: Money; ending_debt: Money;
-  ending_cash: Money; leverage: string; interest_coverage: string; dscr: string; covenant_status: "pass" | "breach";
+  year: number; revenue: Money; adjusted_ebitda: Money; cfads: Money;
+  beginning_debt: Money; new_facility: Money; scheduled_amortization: Money;
+  optional_paydown: Money; average_debt: Money; ending_debt: Money; ending_cash: Money;
+  cash_shortfall: Money; revolver_draw: Money; refinancing_need: Money;
+  leverage: string; interest_coverage: string; dscr: string; covenant_status: "pass" | "breach";
 };
 export type Analysis = {
-  case: CaseInput;
-  input_hash: string;
-  calculated_at: string;
-  metrics: Record<string, Ratio>;
-  capacity: { requested: Money; leverage: Money; dscr: Money; collateral: Money; policy: Money; recommended: Money; binding_constraints: string[] };
-  scorecard: { score: string; grade: number; grade_label: string; confidence: string; components: Array<{ key: string; score: string; weight: string; contribution: string; band: string }> };
+  case: CaseInput; input_hash: string; calculated_at: string; analysis_status: "final" | "blocked";
+  policy_version: string; engine_version: string; metrics: Record<string, Ratio>;
+  capacity: {
+    requested: Money; leverage: Money; dscr: Money; collateral: Money | null; policy: Money;
+    recommended: Money; binding_constraints: string[]; constraints: CapacityConstraint[];
+  };
+  scorecard: {
+    score: string | null; grade: number | null; grade_label: string; confidence: string;
+    confidence_score: number; confidence_drivers: string[]; confidence_penalties: string[];
+    improvement_actions: string[]; synthetic_notice: string;
+    components: Array<{ key: string; score: string; weight: string; contribution: string; band: string; status: string; evidence: string }>;
+  };
   scenarios: Array<{ name: "base" | "downside" | "severe"; years: ScenarioYear[]; first_breach_year: number | null }>;
-  covenants: Array<{ name: string; threshold: string; actual: string; headroom: string; status: "pass" | "breach"; scenario: string; year: number }>;
-  reverse_stress: { dscr_minimum_revenue_decline: string; leverage_breach_margin_decline: string; maximum_downside_loan: Money; converged: boolean };
-  decision: { outcome: string; rationale: string[]; conditions: string[]; primary_repayment_source: string; secondary_repayment_source: string };
+  covenants: Array<{ name: string; threshold: string; actual: string; headroom: string; status: "pass" | "breach"; scenario: string; year: number; frequency: string; rationale: string; cure: string; covenant_type: string }>;
+  policy_checks: Array<{ key: string; label: string; status: string; severity: string; actual: string; threshold: string; exception_allowed: boolean; remediation: string }>;
+  reverse_stress: { dscr_minimum_revenue_decline: string; leverage_breach_margin_decline: string; maximum_downside_loan: Money; converged: boolean; method: string; iterations: number; tolerance: string; residual: string; lower_bound: string; upper_bound: string; interpretation: string };
+  decision: { outcome: string; rationale: string[]; conditions: string[]; primary_repayment_source: string; secondary_repayment_source: string; facility_type: string; maturity_years: number; amortization_years: number; collateral: string; guarantee: string; monitoring: string[]; policy_exceptions: string[]; decision_priority: string };
   memo_sections: Record<string, string[]>;
 };
-export type CaseEnvelope = { id: string; input: CaseInput; analysis: Analysis | null };
+export type CaseEnvelope = {
+  id: string; title: string; status: string; version: number; archived: boolean;
+  updated_at: string; expires_at: string; input: CaseInput; analysis: Analysis | null;
+};
+export type CaseSummary = {
+  id: string; title: string; slug: string; borrower_name: string; status: string;
+  version: number; archived: boolean; updated_at: string; decision: string | null; grade: number | null;
+};
+export type RuntimeInfo = {
+  persistence: string; durable: boolean; retention_days: number; case_quota: number;
+  requests_per_minute: number; pdfs_per_hour: number; maximum_payload_bytes: number; notice: string;
+};
