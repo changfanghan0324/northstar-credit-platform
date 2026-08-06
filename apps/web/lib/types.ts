@@ -103,11 +103,23 @@ export type ScenarioYear = {
   ending_cash: Money;
   cash_shortfall: Money;
   revolver_draw: Money;
+  revolver_remaining: Money;
   refinancing_need: Money;
-  leverage: string;
-  interest_coverage: string;
-  dscr: string;
-  covenant_status: "pass" | "breach";
+  unpaid_debt_service: Money;
+  leverage: string | null;
+  leverage_status: string;
+  leverage_reason_code: string;
+  interest_coverage: string | null;
+  interest_coverage_status: string;
+  interest_coverage_reason_code: string;
+  dscr: string | null;
+  dscr_status: string;
+  dscr_reason_code: string;
+  covenant_status: "pass" | "breach" | "not_applicable" | "blocked";
+  liquidity_status: "adequate" | "shortfall";
+  refinancing_status: "none" | "required";
+  debt_service_status: "paid" | "unpaid";
+  revolver_status: "available" | "exhausted" | "not_applicable";
 };
 export type Analysis = {
   case: CaseInput;
@@ -151,6 +163,8 @@ export type Analysis = {
     name: "base" | "downside" | "severe";
     years: ScenarioYear[];
     first_breach_year: number | null;
+    first_stress_event_year: number | null;
+    liquidity_exhaustion_year: number | null;
   }>;
   covenants: Array<{
     name: string;
@@ -176,7 +190,7 @@ export type Analysis = {
     remediation: string;
   }>;
   reverse_stress: {
-    dscr_minimum_revenue_decline: string;
+    dscr_minimum_revenue_decline: string | null;
     leverage_breach_margin_decline: string;
     maximum_downside_loan: Money;
     converged: boolean;
@@ -187,6 +201,7 @@ export type Analysis = {
     lower_bound: string;
     upper_bound: string;
     interpretation: string;
+    failure_reason: string | null;
   };
   decision: {
     outcome: string;
@@ -229,6 +244,7 @@ export type CaseSummary = {
   grade: number | null;
 };
 export type RuntimeInfo = {
+  product_mode: "portfolio_demo";
   persistence: string;
   durable: boolean;
   retention_days: number;
@@ -236,5 +252,21 @@ export type RuntimeInfo = {
   requests_per_minute: number;
   pdfs_per_hour: number;
   maximum_payload_bytes: number;
+  rate_limit_scope: "best_effort_instance" | "shared";
   notice: string;
+};
+
+export type AuditEntry = {
+  id: string;
+  action: string;
+  version: number;
+  details: Record<string, unknown>;
+  created_at: string;
+};
+
+export type CaseVersionSummary = {
+  version: number;
+  status: string;
+  created_at: string;
+  analyzed: boolean;
 };

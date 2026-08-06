@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Header } from "./Header";
 import { api, money } from "@/lib/api";
 import { type Language, prefix } from "@/lib/i18n";
+import { formatMoneyInput, parseMoneyInput } from "@/lib/money";
 import type {
   CaseInput,
   DebtInstrument,
@@ -122,23 +123,6 @@ const fieldLabels: Record<string, [string, string]> = {
   net_income: ["Net income", "淨利"],
 };
 
-function toMinor(input: string, exponent = 2): number {
-  const cleaned = input.trim().replaceAll(",", "");
-  if (cleaned === "") return 0;
-  if (!/^-?\d+(\.\d{0,2})?$/.test(cleaned))
-    throw new Error("Enter a valid monetary amount.");
-  const negative = cleaned.startsWith("-");
-  const [whole, fraction = ""] = cleaned.replace("-", "").split(".");
-  const digits = `${whole}${fraction.padEnd(exponent, "0").slice(0, exponent)}`;
-  const value = Number.parseInt(digits, 10);
-  return negative ? -value : value;
-}
-
-function dollars(value: Money): string {
-  const scale = 10 ** value.minor_unit_exponent;
-  return (value.amount_minor / scale).toFixed(value.minor_unit_exponent);
-}
-
 function scenarioNameForWizard(value: string, zh: boolean) {
   return zh
     ? (
@@ -244,15 +228,30 @@ export function NewCase({ language }: { language: Language }) {
   function patchRequest(key: keyof CaseInput["request"], value: unknown) {
     if (input) patchInput({ request: { ...input.request, [key]: value } });
   }
+  function parsedAmount(value: string, current: Money): number | null {
+    const parsed = parseMoneyInput(
+      value,
+      current.minor_unit_exponent,
+      language,
+    );
+    if (!parsed.ok) {
+      setError(parsed.message);
+      return null;
+    }
+    setError("");
+    return parsed.amountMinor;
+  }
   function patchMoney(key: string, value: string) {
     if (!input) return;
     const current = input.financials[key] as Money;
+    const amountMinor = parsedAmount(value, current);
+    if (amountMinor === null) return;
     patchInput({
       financials: {
         ...input.financials,
         [key]: {
           ...current,
-          amount_minor: toMinor(value, current.minor_unit_exponent),
+          amount_minor: amountMinor,
         },
       },
     });
@@ -472,13 +471,18 @@ export function NewCase({ language }: { language: Language }) {
                   {zh ? "申請額（美元）" : "Requested amount (USD)"}
                   <input
                     inputMode="decimal"
-                    value={dollars(input.request.amount)}
-                    onChange={(e) =>
+                    value={formatMoneyInput(input.request.amount)}
+                    onChange={(e) => {
+                      const amountMinor = parsedAmount(
+                        e.target.value,
+                        input.request.amount,
+                      );
+                      if (amountMinor === null) return;
                       patchRequest("amount", {
                         ...input.request.amount,
-                        amount_minor: toMinor(e.target.value),
-                      })
-                    }
+                        amount_minor: amountMinor,
+                      });
+                    }}
                   />
                 </label>
                 <label>
@@ -603,7 +607,7 @@ export function NewCase({ language }: { language: Language }) {
                     {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
                     <input
                       inputMode="decimal"
-                      value={dollars(input.financials[key] as Money)}
+                      value={formatMoneyInput(input.financials[key] as Money)}
                       onChange={(e) => patchMoney(key, e.target.value)}
                     />
                   </label>
@@ -659,7 +663,7 @@ export function NewCase({ language }: { language: Language }) {
                     {zh ? fieldLabels[key][1] : fieldLabels[key][0]}
                     <input
                       inputMode="decimal"
-                      value={dollars(input.financials[key] as Money)}
+                      value={formatMoneyInput(input.financials[key] as Money)}
                       onChange={(e) => patchMoney(key, e.target.value)}
                     />
                   </label>
@@ -684,15 +688,20 @@ export function NewCase({ language }: { language: Language }) {
                     <label>
                       {zh ? "本金餘額" : "Principal balance"}
                       <input
-                        value={dollars(item.principal)}
-                        onChange={(e) =>
+                        value={formatMoneyInput(item.principal)}
+                        onChange={(e) => {
+                          const amountMinor = parsedAmount(
+                            e.target.value,
+                            item.principal,
+                          );
+                          if (amountMinor === null) return;
                           patchDebt(index, {
                             principal: {
                               ...item.principal,
-                              amount_minor: toMinor(e.target.value),
+                              amount_minor: amountMinor,
                             },
-                          })
-                        }
+                          });
+                        }}
                       />
                     </label>
                     <label>
@@ -742,15 +751,20 @@ export function NewCase({ language }: { language: Language }) {
                     <label>
                       {zh ? "年度攤還" : "Annual amortization"}
                       <input
-                        value={dollars(item.scheduled_amortization)}
-                        onChange={(e) =>
+                        value={formatMoneyInput(item.scheduled_amortization)}
+                        onChange={(e) => {
+                          const amountMinor = parsedAmount(
+                            e.target.value,
+                            item.scheduled_amortization,
+                          );
+                          if (amountMinor === null) return;
                           patchDebt(index, {
                             scheduled_amortization: {
                               ...item.scheduled_amortization,
-                              amount_minor: toMinor(e.target.value),
+                              amount_minor: amountMinor,
                             },
-                          })
-                        }
+                          });
+                        }}
                       />
                     </label>
                     <label>

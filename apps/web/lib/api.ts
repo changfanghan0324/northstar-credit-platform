@@ -1,8 +1,10 @@
 import type {
   Analysis,
+  AuditEntry,
   CaseEnvelope,
   CaseInput,
   CaseSummary,
+  CaseVersionSummary,
   DemoCase,
   Money,
   RuntimeInfo,
@@ -86,6 +88,13 @@ export const api = {
   archive: (id: string) =>
     request<CaseEnvelope>(`/cases/${id}/archive`, { method: "POST" }),
   delete: (id: string) => request<void>(`/cases/${id}`, { method: "DELETE" }),
+  versions: (id: string) =>
+    request<CaseVersionSummary[]>(`/cases/${id}/versions`),
+  restoreVersion: (id: string, version: number) =>
+    request<CaseEnvelope>(`/cases/${id}/versions/${version}/restore`, {
+      method: "POST",
+    }),
+  audit: (id: string) => request<AuditEntry[]>(`/cases/${id}/audit`),
 };
 
 function grouping(value: bigint, locale: string): string {

@@ -28,7 +28,7 @@ from credit_engine import (
     net_debt_to_ebitda,
     quick_ratio,
 )
-from credit_engine.types import RatioResult
+from credit_engine.types import RatioResult, RatioStatus
 from northstar_policy import CreditPolicy, load_policy
 
 from .models import (
@@ -116,7 +116,7 @@ def _scoreable(result: RatioResult, *, adverse_high: bool = False) -> Decimal | 
     if result.is_ok:
         return result.value_exact
     if result.is_favorable_nm:
-        return Decimal("999999")
+        return ZERO if adverse_high else Decimal("999999")
     if result.is_adverse_nm:
         return Decimal("999999") if adverse_high else ZERO
     return None
@@ -475,6 +475,8 @@ def _scenario(
     )
     years: list[ScenarioYearView] = []
     first_breach: int | None = None
+    first_stress_event: int | None = None
+    liquidity_exhaustion: int | None = None
     for year in range(1, 4):
         beginning_debt = outstanding
         new_facility = new_debt if year == 1 else 0
@@ -534,26 +536,23 @@ def _scenario(
         total_interest = base_interest + revolver_draw * effective_new_rate / Decimal(2)
         total_service = total_interest + scheduled_amortization
         pre_financing_cash = Decimal(cash + available.amount_minor) - total_service
-        coverage = (
-            Decimal(earnings.amount_minor) / total_interest
-            if total_interest > 0
-            else Decimal("999.9999")
-        )
-        dscr_value = (
-            Decimal(available.amount_minor) / total_service
-            if total_service > 0
-            else Decimal("999.9999")
-        )
         revolver_available -= int(revolver_draw)
         outstanding += int(revolver_draw)
         cash_after_draw = pre_financing_cash + revolver_draw
         cash_shortfall = max(ZERO, Decimal(minimum_cash) - cash_after_draw)
-        cash = int(cash_after_draw)
-        leverage = (
-            Decimal(outstanding) / Decimal(earnings.amount_minor)
-            if earnings.amount_minor > 0
-            else Decimal("999.9999")
+        unpaid_debt_service = max(ZERO, -cash_after_draw)
+        cash = int(cash_after_draw.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        interest_money = _new_money(
+            int(total_interest.quantize(Decimal(1), rounding=ROUND_HALF_UP)), revenue
         )
+        service_money = _new_money(
+            int(total_service.quantize(Decimal(1), rounding=ROUND_HALF_UP)), revenue
+        )
+        leverage_result = gross_debt_to_ebitda(
+            _new_money(outstanding, revenue), earnings
+        )
+        coverage_result = interest_coverage(earnings, interest_money)
+        dscr_result = debt_service_coverage(available, service_money)
         instrument_maturities = sum(
             item.principal.amount_minor
             for item in case.debt_instruments
@@ -562,10 +561,46 @@ def _scenario(
         refinancing_need = min(Decimal(outstanding), Decimal(instrument_maturities))
         if year >= case.request.maturity_years and outstanding > 0:
             refinancing_need = Decimal(outstanding)
-        breach = leverage > policy.maximum_leverage or dscr_value < policy.minimum_dscr
-        breach = breach or cash_shortfall > 0 or refinancing_need > 0
-        if breach and first_breach is None:
+        leverage_breach = (
+            leverage_result.value_exact > policy.maximum_leverage
+            if leverage_result.value_exact is not None
+            else not leverage_result.is_favorable_nm
+        )
+        dscr_breach = (
+            dscr_result.value_exact < policy.minimum_dscr
+            if dscr_result.value_exact is not None
+            else not dscr_result.is_favorable_nm
+        )
+        blocked = leverage_result.status in {
+            RatioStatus.MISSING,
+            RatioStatus.ERROR,
+            RatioStatus.BLOCKED,
+        } or dscr_result.status in {
+            RatioStatus.MISSING,
+            RatioStatus.ERROR,
+            RatioStatus.BLOCKED,
+        }
+        covenant_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
+            "blocked"
+            if blocked
+            else "breach"
+            if leverage_breach or dscr_breach
+            else "not_applicable"
+            if leverage_result.value_exact is None and dscr_result.value_exact is None
+            else "pass"
+        )
+        stress_event = (
+            covenant_status in {"breach", "blocked"}
+            or cash_shortfall > 0
+            or refinancing_need > 0
+            or unpaid_debt_service > 0
+        )
+        if covenant_status in {"breach", "blocked"} and first_breach is None:
             first_breach = year
+        if stress_event and first_stress_event is None:
+            first_stress_event = year
+        if cash_shortfall > 0 and liquidity_exhaustion is None:
+            liquidity_exhaustion = year
         years.append(
             ScenarioYearView(
                 year=year,
@@ -583,20 +618,50 @@ def _scenario(
                 ending_cash=_view(_new_money(cash, revenue)),
                 cash_shortfall=_view(_new_money(int(cash_shortfall), revenue)),
                 revolver_draw=_view(_new_money(int(revolver_draw), revenue)),
+                revolver_remaining=_view(
+                    _new_money(max(0, revolver_available), revenue)
+                ),
                 refinancing_need=_view(_new_money(int(refinancing_need), revenue)),
-                leverage=str(
-                    leverage.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                unpaid_debt_service=_view(
+                    _new_money(int(unpaid_debt_service), revenue)
                 ),
-                interest_coverage=str(
-                    coverage.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                leverage=(
+                    None
+                    if leverage_result.value is None
+                    else str(leverage_result.value)
                 ),
-                dscr=str(
-                    dscr_value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                leverage_status=leverage_result.status.value,
+                leverage_reason_code=leverage_result.reason_code.value,
+                interest_coverage=(
+                    None
+                    if coverage_result.value is None
+                    else str(coverage_result.value)
                 ),
-                covenant_status="breach" if breach else "pass",
+                interest_coverage_status=coverage_result.status.value,
+                interest_coverage_reason_code=coverage_result.reason_code.value,
+                dscr=None if dscr_result.value is None else str(dscr_result.value),
+                dscr_status=dscr_result.status.value,
+                dscr_reason_code=dscr_result.reason_code.value,
+                covenant_status=covenant_status,
+                liquidity_status="shortfall" if cash_shortfall > 0 else "adequate",
+                refinancing_status="required" if refinancing_need > 0 else "none",
+                debt_service_status=("unpaid" if unpaid_debt_service > 0 else "paid"),
+                revolver_status=(
+                    "not_applicable"
+                    if case.financials.undrawn_revolver.amount_minor <= 0
+                    else "exhausted"
+                    if revolver_available <= 0
+                    else "available"
+                ),
             )
         )
-    return ScenarioView(name=name, years=years, first_breach_year=first_breach)  # type: ignore[arg-type]
+    return ScenarioView(
+        name=cast(Literal["base", "downside", "severe"], name),
+        years=years,
+        first_breach_year=first_breach,
+        first_stress_event_year=first_stress_event,
+        liquidity_exhaustion_year=liquidity_exhaustion,
+    )
 
 
 def _covenants(
@@ -605,26 +670,61 @@ def _covenants(
     case: CaseInput,
     scorecard: ScorecardView,
 ) -> list[CovenantView]:
+    favorable_reasons = {"nm_no_obligation", "nm_no_cash_interest"}
+
+    def covenant_result(
+        value: str | None,
+        status: str,
+        reason: str,
+        threshold: Decimal,
+        *,
+        minimum: bool,
+    ) -> tuple[Literal["pass", "breach", "not_applicable", "blocked"], str]:
+        if value is None:
+            if reason in favorable_reasons:
+                return "not_applicable", "Not meaningful — no applicable obligation"
+            if status in {"missing_input", "invalid_denominator", "blocked"}:
+                return "blocked", reason
+            return "breach", reason
+        actual = Decimal(value)
+        passed = actual >= threshold if minimum else actual <= threshold
+        headroom = actual - threshold if minimum else threshold - actual
+        return ("pass" if passed else "breach"), str(
+            headroom.quantize(Decimal("0.0001"))
+        )
+
     output: list[CovenantView] = []
     for scenario in scenarios:
         for year in scenario.years:
-            leverage = Decimal(year.leverage)
-            dscr = Decimal(year.dscr)
-            coverage = Decimal(year.interest_coverage)
+            leverage_status, leverage_headroom = covenant_result(
+                year.leverage,
+                year.leverage_status,
+                year.leverage_reason_code,
+                policy.maximum_leverage,
+                minimum=False,
+            )
+            dscr_status, dscr_headroom = covenant_result(
+                year.dscr,
+                year.dscr_status,
+                year.dscr_reason_code,
+                policy.minimum_dscr,
+                minimum=True,
+            )
+            coverage_status, coverage_headroom = covenant_result(
+                year.interest_coverage,
+                year.interest_coverage_status,
+                year.interest_coverage_reason_code,
+                policy.minimum_interest_coverage,
+                minimum=True,
+            )
             output.extend(
                 [
                     CovenantView(
                         name="Maximum total leverage",
                         threshold=str(policy.maximum_leverage),
-                        actual=year.leverage,
-                        headroom=str(
-                            (policy.maximum_leverage - leverage).quantize(
-                                Decimal("0.0001")
-                            )
-                        ),
-                        status="pass"
-                        if leverage <= policy.maximum_leverage
-                        else "breach",
+                        actual=year.leverage or year.leverage_reason_code,
+                        headroom=leverage_headroom,
+                        status=leverage_status,
                         scenario=scenario.name,
                         year=year.year,
                         rationale="Limits balance-sheet leverage and protects refinance capacity.",
@@ -632,31 +732,26 @@ def _covenants(
                     CovenantView(
                         name="Minimum DSCR",
                         threshold=str(policy.minimum_dscr),
-                        actual=year.dscr,
-                        headroom=str(
-                            (dscr - policy.minimum_dscr).quantize(Decimal("0.0001"))
-                        ),
-                        status="pass" if dscr >= policy.minimum_dscr else "breach",
+                        actual=year.dscr or year.dscr_reason_code,
+                        headroom=dscr_headroom,
+                        status=dscr_status,
                         scenario=scenario.name,
                         year=year.year,
                         rationale="Requires recurring cash flow to cover interest and scheduled principal.",
                     ),
                 ]
             )
-            if coverage < policy.minimum_interest_coverage + Decimal("0.75"):
+            if year.interest_coverage is None or Decimal(
+                year.interest_coverage
+            ) < policy.minimum_interest_coverage + Decimal("0.75"):
                 output.append(
                     CovenantView(
                         name="Minimum interest coverage",
                         threshold=str(policy.minimum_interest_coverage),
-                        actual=year.interest_coverage,
-                        headroom=str(
-                            (coverage - policy.minimum_interest_coverage).quantize(
-                                Decimal("0.0001")
-                            )
-                        ),
-                        status="pass"
-                        if coverage >= policy.minimum_interest_coverage
-                        else "breach",
+                        actual=year.interest_coverage
+                        or year.interest_coverage_reason_code,
+                        headroom=coverage_headroom,
+                        status=coverage_status,
                         scenario=scenario.name,
                         year=year.year,
                         rationale="Adds protection when projected interest headroom is limited.",
@@ -787,7 +882,7 @@ def _reverse_stress(
 ) -> ReverseStressView:
     del base_cfads, service, earnings
 
-    def trial(decline: Decimal) -> Decimal:
+    def trial(decline: Decimal) -> Decimal | None:
         base = case.scenarios["base"]
         shocked = base.model_copy(update={"revenue_growth": -decline})
         scenarios = dict(case.scenarios)
@@ -801,7 +896,8 @@ def _reverse_stress(
             _money(case.financials.unrestricted_cash),
             capacity,
         )
-        return Decimal(result.years[0].dscr) - policy.minimum_dscr
+        dscr_value = result.years[0].dscr
+        return None if dscr_value is None else Decimal(dscr_value) - policy.minimum_dscr
 
     lower = ZERO
     upper = Decimal("0.95")
@@ -810,18 +906,31 @@ def _reverse_stress(
     upper_value = trial(upper)
     iterations = 0
     converged = False
-    if lower_value <= ZERO:
+    failure_reason: str | None = None
+    residual = Decimal(0)
+    if lower_value is None or upper_value is None:
+        failure_reason = (
+            "The forecast DSCR is not numerically meaningful at a solver bound."
+        )
+    elif lower_value <= ZERO:
         upper = lower
         residual = lower_value
         converged = True
     elif upper_value > ZERO:
         residual = upper_value
+        failure_reason = "The solver bounds do not bracket a DSCR breach."
     else:
         residual = upper_value
         for iteration in range(1, 61):
             iterations = iteration
             midpoint = (lower + upper) / Decimal(2)
-            residual = trial(midpoint)
+            trial_value = trial(midpoint)
+            if trial_value is None:
+                failure_reason = (
+                    "The forecast DSCR became not meaningful during iteration."
+                )
+                break
+            residual = trial_value
             if abs(residual) <= tolerance or upper - lower <= tolerance:
                 lower = upper = midpoint
                 converged = True
@@ -830,7 +939,9 @@ def _reverse_stress(
                 lower = midpoint
             else:
                 upper = midpoint
-    solved_decline = (lower + upper) / Decimal(2)
+        if not converged and failure_reason is None:
+            failure_reason = "The solver reached its iteration limit."
+    solved_decline = (lower + upper) / Decimal(2) if converged else None
     required_earnings = (
         Decimal(debt.amount_minor + capacity.recommended.amount_minor)
         / policy.maximum_leverage
@@ -847,8 +958,10 @@ def _reverse_stress(
         capacity.recommended.amount_minor, capacity.dscr.amount_minor
     )
     return ReverseStressView(
-        dscr_minimum_revenue_decline=str(
-            (solved_decline * HUNDRED).quantize(Decimal("0.01"))
+        dscr_minimum_revenue_decline=(
+            None
+            if solved_decline is None
+            else str((solved_decline * HUNDRED).quantize(Decimal("0.01")))
         ),
         leverage_breach_margin_decline=str(
             (margin_decline * HUNDRED).quantize(Decimal("0.01"))
@@ -865,6 +978,7 @@ def _reverse_stress(
         interpretation=(
             "Revenue decline that causes first-year DSCR to reach the active policy minimum; the full forecast is rerun for every trial."
         ),
+        failure_reason=failure_reason,
     )
 
 
@@ -1308,7 +1422,11 @@ def analyze_case(
         ],
         "scenario_and_reverse_stress": [
             f"Downside first breach year: {downside.first_breach_year or 'none in forecast'}.",
-            f"Revenue decline to minimum DSCR: {reverse_stress.dscr_minimum_revenue_decline}% (converged: {reverse_stress.converged}).",
+            (
+                f"Revenue decline to minimum DSCR: {reverse_stress.dscr_minimum_revenue_decline}%."
+                if reverse_stress.dscr_minimum_revenue_decline is not None
+                else f"Revenue-to-DSCR reverse stress unavailable: {reverse_stress.failure_reason}."
+            ),
         ],
         "analysis": decision.rationale,
         "strengths": case.business_risk.strengths,

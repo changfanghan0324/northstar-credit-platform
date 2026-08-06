@@ -57,6 +57,20 @@ class AuditRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class CaseVersionRecord(Base):
+    """Immutable input snapshot for one user-visible case version."""
+
+    __tablename__ = "case_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_cases.id", ondelete="CASCADE"), index=True
+    )
+    case_version: Mapped[int] = mapped_column(Integer, index=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 def _database_url() -> str:
     configured = os.environ.get("DATABASE_URL")
     if configured:
@@ -101,6 +115,20 @@ def create_case(
         expires_at=now + timedelta(days=7),
     )
     session.add(record)
+    session.add(
+        CaseVersionRecord(
+            id=str(uuid4()),
+            case_id=record.id,
+            case_version=record.version,
+            payload_json={
+                "title": record.title,
+                "status": record.status,
+                "input": input_json,
+                "analysis": analysis_json,
+            },
+            created_at=now,
+        )
+    )
     session.add(
         AuditRecord(
             id=str(uuid4()),
@@ -175,5 +203,72 @@ def audit(
             version=record.version,
             details_json=details or {},
             created_at=now,
+        )
+    )
+
+
+def snapshot_case(session: Session, record: CaseRecord) -> CaseVersionRecord:
+    snapshot = CaseVersionRecord(
+        id=str(uuid4()),
+        case_id=record.id,
+        case_version=record.version,
+        payload_json={
+            "title": record.title,
+            "status": record.status,
+            "input": record.input_json,
+            "analysis": record.analysis_json,
+        },
+        created_at=datetime.now(UTC),
+    )
+    session.add(snapshot)
+    return snapshot
+
+
+def update_version_analysis(session: Session, record: CaseRecord) -> None:
+    snapshot = session.scalar(
+        select(CaseVersionRecord)
+        .where(
+            CaseVersionRecord.case_id == record.id,
+            CaseVersionRecord.case_version == record.version,
+        )
+        .order_by(CaseVersionRecord.created_at.desc())
+    )
+    if snapshot is None:
+        snapshot_case(session, record)
+        return
+    snapshot.payload_json = {
+        **snapshot.payload_json,
+        "status": record.status,
+        "analysis": record.analysis_json,
+    }
+
+
+def list_case_versions(session: Session, case_id: str) -> list[CaseVersionRecord]:
+    return list(
+        session.scalars(
+            select(CaseVersionRecord)
+            .where(CaseVersionRecord.case_id == case_id)
+            .order_by(CaseVersionRecord.case_version.desc())
+        )
+    )
+
+
+def get_case_version(
+    session: Session, case_id: str, version: int
+) -> CaseVersionRecord | None:
+    return session.scalar(
+        select(CaseVersionRecord).where(
+            CaseVersionRecord.case_id == case_id,
+            CaseVersionRecord.case_version == version,
+        )
+    )
+
+
+def list_audit_records(session: Session, case_id: str) -> list[AuditRecord]:
+    return list(
+        session.scalars(
+            select(AuditRecord)
+            .where(AuditRecord.case_id == case_id)
+            .order_by(AuditRecord.created_at.desc())
         )
     )

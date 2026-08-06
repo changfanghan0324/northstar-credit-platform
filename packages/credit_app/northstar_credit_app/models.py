@@ -232,17 +232,31 @@ class ScenarioYearView(ContractModel):
     ending_cash: MoneyValue
     cash_shortfall: MoneyValue
     revolver_draw: MoneyValue
+    revolver_remaining: MoneyValue
     refinancing_need: MoneyValue
-    leverage: str
-    interest_coverage: str
-    dscr: str
-    covenant_status: Literal["pass", "breach"]
+    unpaid_debt_service: MoneyValue
+    leverage: str | None
+    leverage_status: str
+    leverage_reason_code: str
+    interest_coverage: str | None
+    interest_coverage_status: str
+    interest_coverage_reason_code: str
+    dscr: str | None
+    dscr_status: str
+    dscr_reason_code: str
+    covenant_status: Literal["pass", "breach", "not_applicable", "blocked"]
+    liquidity_status: Literal["adequate", "shortfall"]
+    refinancing_status: Literal["none", "required"]
+    debt_service_status: Literal["paid", "unpaid"]
+    revolver_status: Literal["available", "exhausted", "not_applicable"]
 
 
 class ScenarioView(ContractModel):
     name: Literal["base", "downside", "severe"]
     years: list[ScenarioYearView]
     first_breach_year: int | None
+    first_stress_event_year: int | None
+    liquidity_exhaustion_year: int | None
 
 
 class CovenantView(ContractModel):
@@ -250,7 +264,7 @@ class CovenantView(ContractModel):
     threshold: str
     actual: str
     headroom: str
-    status: Literal["pass", "breach"]
+    status: Literal["pass", "breach", "not_applicable", "blocked"]
     scenario: str
     year: int
     frequency: Literal["monthly", "quarterly", "annual"] = "quarterly"
@@ -295,7 +309,7 @@ class DecisionView(ContractModel):
 
 
 class ReverseStressView(ContractModel):
-    dscr_minimum_revenue_decline: str
+    dscr_minimum_revenue_decline: str | None
     leverage_breach_margin_decline: str
     maximum_downside_loan: MoneyValue
     converged: bool
@@ -306,6 +320,7 @@ class ReverseStressView(ContractModel):
     lower_bound: str
     upper_bound: str
     interpretation: str
+    failure_reason: str | None = None
 
 
 class AnalysisResult(ContractModel):

@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Header } from "./Header";
 import { api, downloadMemo, money } from "@/lib/api";
 import { type Language, prefix } from "@/lib/i18n";
+import { formatMoneyInput, parseMoneyInput } from "@/lib/money";
 import type {
   Analysis,
   CaseEnvelope,
@@ -280,30 +281,6 @@ function memoTitle(value: string, zh: boolean) {
 function isMoney(value: unknown): value is Money {
   return Boolean(value && typeof value === "object" && "amount_minor" in value);
 }
-function dollars(value: Money) {
-  const minor = BigInt(value.amount_minor);
-  const scale = 10n ** BigInt(value.minor_unit_exponent);
-  const negative = minor < 0n;
-  const absolute = negative ? -minor : minor;
-  const whole = absolute / scale;
-  const fraction = (absolute % scale)
-    .toString()
-    .padStart(value.minor_unit_exponent, "0");
-  return `${negative ? "-" : ""}${whole}.${fraction}`;
-}
-function toMinor(value: string, exponent: number) {
-  const clean = value.trim().replaceAll(",", "");
-  if (clean === "") return 0;
-  if (!/^-?\d+(\.\d{0,2})?$/.test(clean))
-    throw new Error("Enter a valid amount");
-  const negative = clean.startsWith("-");
-  const [whole, fraction = ""] = clean.replace("-", "").split(".");
-  const parsed = Number.parseInt(
-    `${whole}${fraction.padEnd(exponent, "0").slice(0, exponent)}`,
-    10,
-  );
-  return negative ? -parsed : parsed;
-}
 function Stat({
   label,
   value,
@@ -527,13 +504,23 @@ function Inputs({
   function setFinancial(key: string, text: string) {
     const current = draft.financials[key];
     if (!isMoney(current)) return;
+    const parsed = parseMoneyInput(
+      text,
+      current.minor_unit_exponent,
+      language,
+    );
+    if (!parsed.ok) {
+      setError(parsed.message);
+      return;
+    }
+    setError("");
     setDraft((value) => ({
       ...value,
       financials: {
         ...value.financials,
         [key]: {
           ...current,
-          amount_minor: toMinor(text, current.minor_unit_exponent),
+          amount_minor: parsed.amountMinor,
         },
       },
     }));
@@ -584,22 +571,29 @@ function Inputs({
           {zh ? "申請額" : "Requested amount"}
           <input
             inputMode="decimal"
-            value={dollars(draft.request.amount)}
-            onChange={(e) =>
+            value={formatMoneyInput(draft.request.amount)}
+            onChange={(e) => {
+              const parsed = parseMoneyInput(
+                e.target.value,
+                draft.request.amount.minor_unit_exponent,
+                language,
+              );
+              if (!parsed.ok) {
+                setError(parsed.message);
+                return;
+              }
+              setError("");
               setDraft((v) => ({
                 ...v,
                 request: {
                   ...v.request,
                   amount: {
                     ...v.request.amount,
-                    amount_minor: toMinor(
-                      e.target.value,
-                      v.request.amount.minor_unit_exponent,
-                    ),
+                    amount_minor: parsed.amountMinor,
                   },
                 },
-              }))
-            }
+              }));
+            }}
           />
         </label>
         <label>
@@ -639,7 +633,7 @@ function Inputs({
             {fieldName[key]?.[zh ? 1 : 0] ?? key.replaceAll("_", " ")}
             <input
               inputMode="decimal"
-              value={dollars(value as Money)}
+              value={formatMoneyInput(value as Money)}
               onChange={(e) => setFinancial(key, e.target.value)}
             />
             {mode === "analyst" && (
@@ -976,11 +970,11 @@ function Stress({
                 </div>
                 <div>
                   <dt>{zh ? "槓桿" : "Leverage"}</dt>
-                  <dd>{ratio(y.leverage)}</dd>
+                  <dd>{ratio(y.leverage, y.leverage_status, zh)}</dd>
                 </div>
                 <div>
                   <dt>DSCR</dt>
-                  <dd>{ratio(y.dscr)}</dd>
+                  <dd>{ratio(y.dscr, y.dscr_status, zh)}</dd>
                 </div>
                 <div>
                   <dt>{zh ? "現金缺口" : "Cash shortfall"}</dt>
@@ -1042,9 +1036,13 @@ function Stress({
         <div>
           <strong>{zh ? "反向壓力測試" : "Reverse stress"}</strong>
           <span>
-            {zh
-              ? `營收下降 ${a.reverse_stress.dscr_minimum_revenue_decline}% 時，DSCR 抵達最低門檻。`
-              : `Revenue decline to minimum DSCR: ${a.reverse_stress.dscr_minimum_revenue_decline}%`}
+            {a.reverse_stress.dscr_minimum_revenue_decline === null
+              ? zh
+                ? `無法求得收斂結果：${a.reverse_stress.failure_reason ?? "未提供原因"}`
+                : `No converged result: ${a.reverse_stress.failure_reason ?? "No reason provided"}`
+              : zh
+                ? `營收下降 ${a.reverse_stress.dscr_minimum_revenue_decline}% 時，DSCR 抵達最低門檻。`
+                : `Revenue decline to minimum DSCR: ${a.reverse_stress.dscr_minimum_revenue_decline}%`}
           </span>
           <small>
             {a.reverse_stress.method} · {a.reverse_stress.iterations} iterations

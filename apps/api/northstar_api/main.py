@@ -24,13 +24,19 @@ from sqlalchemy.orm import Session
 from .database import (
     AuditRecord,
     CaseRecord,
+    CaseVersionRecord,
     audit,
     count_active_cases,
     create_case,
     get_case,
+    get_case_version,
     initialize_database,
+    list_audit_records,
+    list_case_versions,
     list_cases,
     session_scope,
+    snapshot_case,
+    update_version_analysis,
 )
 from .pdf import render_memo_pdf
 
@@ -60,10 +66,26 @@ class CaseSummary(BaseModel):
     grade: int | None
 
 
+class AuditEntry(BaseModel):
+    id: str
+    action: str
+    version: int
+    details: dict[str, Any]
+    created_at: str
+
+
+class CaseVersionSummary(BaseModel):
+    version: int
+    status: str
+    created_at: str
+    analyzed: bool
+
+
 REQUEST_LIMIT = 60
 CASE_QUOTA = 10
 PDF_LIMIT = 5
 MAX_PAYLOAD_BYTES = 1_048_576
+PRODUCT_MODE = "portfolio_demo"
 _requests: dict[str, deque[float]] = defaultdict(deque)
 _pdf_requests: dict[str, deque[float]] = defaultdict(deque)
 
@@ -283,16 +305,18 @@ def runtime() -> dict[str, Any]:
     durable = bool(os.environ.get("DATABASE_URL"))
     return {
         "persistence": "durable_postgresql" if durable else "temporary_session",
+        "product_mode": PRODUCT_MODE,
         "durable": durable,
         "retention_days": 7,
         "case_quota": CASE_QUOTA,
         "requests_per_minute": REQUEST_LIMIT,
         "pdfs_per_hour": PDF_LIMIT,
         "maximum_payload_bytes": MAX_PAYLOAD_BYTES,
+        "rate_limit_scope": "best_effort_instance",
         "notice": (
-            "Cases persist for up to seven days."
+            "Anonymous synthetic cases expire after seven days."
             if durable
-            else "Database unavailable: cases are temporary and may disappear between requests."
+            else "Temporary portfolio-demo storage: cases expire within seven days and may disappear earlier after a service restart."
         ),
     }
 
@@ -404,6 +428,7 @@ def update_case(
     record.slug = case.slug
     record.version += 1
     record.status = "stale"
+    snapshot_case(db, record)
     audit(db, record, "updated", {"analysis_stale": True})
     db.commit()
     db.refresh(record)
@@ -423,6 +448,7 @@ def run_analysis(case_id: str, db: Database, owner: SessionId) -> AnalysisResult
     result = analyze_case(CaseInput.model_validate(record.input_json))
     record.analysis_json = result.model_dump(mode="json")
     record.status = "analyzed"
+    update_version_analysis(db, record)
     audit(db, record, "analyzed", {"input_hash": result.input_hash})
     db.commit()
     return result
@@ -464,11 +490,68 @@ def archive_case(case_id: str, db: Database, owner: SessionId) -> CaseEnvelope:
     return _envelope(record)
 
 
+@app.get("/cases/{case_id}/versions", response_model=list[CaseVersionSummary])
+def case_versions(
+    case_id: str, db: Database, owner: SessionId
+) -> list[CaseVersionSummary]:
+    _owned(db, case_id, owner)
+    return [
+        CaseVersionSummary(
+            version=item.case_version,
+            status=str(item.payload_json.get("status", "draft")),
+            created_at=item.created_at.isoformat(),
+            analyzed=item.payload_json.get("analysis") is not None,
+        )
+        for item in list_case_versions(db, case_id)
+    ]
+
+
+@app.post("/cases/{case_id}/versions/{version}/restore", response_model=CaseEnvelope)
+def restore_case_version(
+    case_id: str, version: int, db: Database, owner: SessionId
+) -> CaseEnvelope:
+    record = _owned(db, case_id, owner)
+    source = get_case_version(db, case_id, version)
+    if source is None:
+        raise HTTPException(404, "Case version not found")
+    restored_input = CaseInput.model_validate(source.payload_json["input"])
+    record.input_json = restored_input.model_dump(mode="json")
+    record.analysis_json = None
+    record.title = restored_input.borrower.legal_name
+    record.slug = restored_input.slug
+    record.version += 1
+    record.status = "stale"
+    snapshot_case(db, record)
+    audit(db, record, "version_restored", {"source_version": version})
+    db.commit()
+    db.refresh(record)
+    return _envelope(record)
+
+
+@app.get("/cases/{case_id}/audit", response_model=list[AuditEntry])
+def case_audit(case_id: str, db: Database, owner: SessionId) -> list[AuditEntry]:
+    _owned(db, case_id, owner)
+    return [
+        AuditEntry(
+            id=item.id,
+            action=item.action,
+            version=item.version,
+            details=item.details_json,
+            created_at=item.created_at.isoformat(),
+        )
+        for item in list_audit_records(db, case_id)
+    ]
+
+
 @app.delete("/cases/{case_id}", status_code=204)
 def delete_case(case_id: str, db: Database, owner: SessionId) -> Response:
     record = _owned(db, case_id, owner)
     for item in db.scalars(select(AuditRecord).where(AuditRecord.case_id == record.id)):
         db.delete(item)
+    for version_item in db.scalars(
+        select(CaseVersionRecord).where(CaseVersionRecord.case_id == record.id)
+    ):
+        db.delete(version_item)
     db.delete(record)
     db.commit()
     return Response(status_code=204)

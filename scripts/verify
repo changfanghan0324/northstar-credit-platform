@@ -34,7 +34,12 @@ cd "$project_root"
 "$python_bin" -m ruff format --check packages/credit_engine/credit_engine packages/credit_app packages/policy apps/api migrations tests
 PYTHONPATH="packages/credit_engine:packages/credit_app:packages/policy:apps/api" \
   "$python_bin" -m mypy packages/credit_engine/credit_engine packages/credit_app packages/policy apps/api
-"$python_bin" -m pytest --cov=credit_engine --cov-report=term-missing
+PYTHONPATH="packages/credit_engine:packages/credit_app:packages/policy:apps/api" \
+  "$python_bin" -m pytest \
+    --cov=credit_engine \
+    --cov=northstar_credit_app \
+    --cov=northstar_api \
+    --cov-report=term-missing
 
 if [ -x "$project_root/apps/web/node_modules/.bin/tsc" ]; then
     if command -v node >/dev/null 2>&1; then

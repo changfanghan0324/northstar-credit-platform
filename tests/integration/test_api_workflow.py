@@ -98,6 +98,8 @@ def test_case_lifecycle_list_duplicate_archive_update_rerun_delete() -> None:
 
         archived = client.post(f"/cases/{duplicate_id}/archive", headers=owner)
         assert archived.json()["archived"] is True
+        restored = client.post(f"/cases/{duplicate_id}/archive", headers=owner)
+        assert restored.json()["archived"] is False
 
         template["borrower"]["legal_name"] = "Edited Synthetic Borrower"
         updated = client.put(f"/cases/{case_id}", headers=owner, json=template)
@@ -107,6 +109,26 @@ def test_case_lifecycle_list_duplicate_archive_update_rerun_delete() -> None:
         rerun = client.post(f"/cases/{case_id}/analyze", headers=owner)
         assert rerun.json()["case"]["borrower"]["legal_name"] == (
             "Edited Synthetic Borrower"
+        )
+
+        versions = client.get(f"/cases/{case_id}/versions", headers=owner)
+        assert [item["version"] for item in versions.json()] == [2, 1]
+        history = client.get(f"/cases/{case_id}/audit", headers=owner)
+        assert {item["action"] for item in history.json()} >= {
+            "created",
+            "updated",
+            "analyzed",
+        }
+
+        version_restore = client.post(
+            f"/cases/{case_id}/versions/1/restore", headers=owner
+        )
+        assert version_restore.status_code == 200
+        assert version_restore.json()["version"] == 3
+        assert version_restore.json()["status"] == "stale"
+        assert version_restore.json()["analysis"] is None
+        assert version_restore.json()["input"]["borrower"]["legal_name"] == (
+            "Alder Creek Components, Inc."
         )
 
         assert client.delete(f"/cases/{duplicate_id}", headers=owner).status_code == 204
