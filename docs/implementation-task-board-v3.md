@@ -31,4 +31,4 @@
 - [x] Browser E2E for fourteen required flows and screenshots at 390/768/1024/desktop.
 - [x] Accessibility and visual fidelity review against the established Northstar concept system.
 - [x] Claude re-review of critical calculations, database/session ownership, and PDF line by line.
-- [ ] Close all P0/P1 findings; deploy preview, smoke-test, promote production, and verify persistence/delete/PDF.
+- [x] Close all P0/P1 findings; deploy production, smoke-test the public alias, verify lifecycle/PDF controls, and confirm honest temporary-session persistence reporting.
