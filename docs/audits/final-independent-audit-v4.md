@@ -32,7 +32,7 @@ availability policy, provenance E2E coverage, and the final public redeploy/re-a
 ## Final public deployment evidence
 
 - GitHub `main`: commit `2020c8e` (includes the V4 implementation commit `c7a87d9`)
-- Vercel production deployment: `dpl_HThbHYhoF5xRTEXK9CFZzo4Fubmk`
+- Vercel production deployment: `dpl_5QeZ8ZVVnmRpzsDAiN4EaTQEPRWU`
 - Ready state: `READY`; production alias: <https://northstar-credit-platform.vercel.app>
 - Public checks: `/`, `/zh-TW`, `/health`, `/runtime`, `/demo-cases`, all HTTP 200
 - Demo workflow: template GET 200, demo open 200, analyze 200, English detailed PDF 200
