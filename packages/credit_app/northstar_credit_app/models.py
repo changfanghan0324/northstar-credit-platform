@@ -773,6 +773,8 @@ class DebtReconciliationView(ContractModel):
     stress_source: str
     maturity_source: str
     aggregate_mode: bool = False
+    coverage_basis_notice: str = ""
+    residual_debt: MoneyValue | None = None
 
 
 class ResolvedFacilityMechanics(ContractModel):

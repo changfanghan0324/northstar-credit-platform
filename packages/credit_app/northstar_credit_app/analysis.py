@@ -151,11 +151,7 @@ def _rate_decision(case: CaseInput, pricing_rate: Decimal | None) -> RateDecisio
     )
     floor = case.request.rate_floor
     underwritten_index = max(index, floor)
-    all_in = (
-        pricing_rate
-        if pricing_rate is not None
-        else underwritten_index + case.request.annual_rate - case.request.base_rate
-    )
+    all_in = _underwritten_rate(case, pricing_rate)
     spread_bps = max(
         0, int(((all_in - underwritten_index) * Decimal(10000)).quantize(Decimal(1)))
     )
@@ -210,6 +206,8 @@ def _reconcile_debt(
             stress_source="balance_sheet_aggregate",
             maturity_source="not_supplied",
             aggregate_mode=True,
+            coverage_basis_notice="Coverage uses aggregate balance-sheet debt because no instrument schedule was supplied.",
+            residual_debt=None,
         )
     instrument_minor = sum(
         item.principal.amount_minor for item in case.debt_instruments
@@ -286,8 +284,26 @@ def _reconcile_debt(
         ),
         leverage_source="balance_sheet_and_instrument_schedule",
         stress_source="balance_sheet_and_instrument_schedule",
-        maturity_source="instrument_schedule",
-        aggregate_mode=False,
+        maturity_source=(
+            "instrument_schedule_plus_aggregate_residual"
+            if partial_long_term_schedule
+            else "instrument_schedule"
+        ),
+        aggregate_mode=partial_long_term_schedule,
+        coverage_basis_notice=(
+            "Coverage uses aggregate debt plus the supplied long-term schedule; unscheduled residual debt remains outstanding and is not silently amortized."
+            if partial_long_term_schedule
+            else "Coverage uses the reconciled instrument schedule."
+        ),
+        residual_debt=(
+            MoneyValue(
+                amount_minor=max(0, difference),
+                currency=template.currency,
+                minor_unit_exponent=template.minor_unit_exponent,
+            )
+            if partial_long_term_schedule
+            else None
+        ),
     )
 
 
@@ -661,8 +677,8 @@ def _capacity(
     if case.request.facility_type == "asset_based":
         candidates["collateral_capacity"] = (
             0
-            if borrowing_base.borrowing_base is None
-            else borrowing_base.borrowing_base.amount_minor
+            if borrowing_base.availability is None
+            else borrowing_base.availability.amount_minor
         )
     elif collateral_applicable:
         candidates["collateral_capacity"] = (
@@ -2073,7 +2089,8 @@ def analyze_case(
             adjustments.warning or "No adjustment-threshold warning.",
         ],
         "capital_structure": [
-            f"Gross debt {_currency(_view(debt))}; unrestricted cash {_currency(financials.unrestricted_cash)}; equity {_currency(financials.equity)}."
+            f"Gross debt {_currency(_view(debt))}; unrestricted cash {_currency(financials.unrestricted_cash)}; equity {_currency(financials.equity)}.",
+            f"Debt reconciliation: {debt_reconciliation.status}; {debt_reconciliation.coverage_basis_notice}",
         ],
         "debt_maturity_schedule": maturity_lines,
         "key_ratios": [

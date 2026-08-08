@@ -17,11 +17,11 @@ Scope: Portfolio Demo Mode only. No real borrower, bank, rating-agency, market-q
 
 ## Evidence
 
-- Python unit/integration suite: 108 passed.
+- Python unit/integration suite: 110 passed.
 - Total coverage: 92.13% (required threshold 90%).
 - Ruff, strict Mypy, TypeScript, ESLint, and Next.js production build: passed.
-- Added `tests/unit/test_v5_logic_contract.py` for scale, FY/YTD lineage, and debt mismatch blocking.
+- Added `tests/unit/test_v5_logic_contract.py` for scale, FY/YTD lineage, debt mismatch blocking, partial residual labeling, ABL availability, rate consistency, and maturity exit state.
 
 ## Accepted limitations
 
-The product remains a synthetic portfolio demonstration. It does not connect to banks, credit bureaus, ratings, live market data, production identity, durable multi-tenant storage, or regulated decision workflows. Instrument schedules are optional; when omitted, the result explicitly uses aggregate mode. Browser and production smoke/PDF/accessibility evidence must be refreshed after each deployment.
+The product remains a synthetic portfolio demonstration. It does not connect to banks, credit bureaus, ratings, live market data, production identity, durable multi-tenant storage, or regulated decision workflows. Instrument schedules are optional; when omitted, the result explicitly uses aggregate mode. A partial long-term schedule labels its aggregate residual basis. ABL availability is distinct from borrowing-base amount and is net of drawn exposure. Browser and production smoke/PDF/accessibility evidence must be refreshed after each deployment.

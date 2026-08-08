@@ -353,11 +353,13 @@ export type Analysis = {
     reported_interest: Money;
     difference: Money | null;
     tolerance: Money;
+    residual_debt?: Money | null;
     explanation: string;
     leverage_source: string;
     stress_source: string;
     maturity_source: string;
     aggregate_mode: boolean;
+    coverage_basis_notice?: string;
   } | null;
   facility_mechanics?: {
     facility_type: string;

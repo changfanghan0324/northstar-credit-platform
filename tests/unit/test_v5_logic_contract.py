@@ -5,12 +5,14 @@ from decimal import Decimal
 
 from northstar_credit_app import analyze_case, resolve_underwriting_financials
 from northstar_credit_app.demo import load_demo_case
+from northstar_credit_app.facility import calculate_borrowing_base
 from northstar_credit_app.models import (
     DebtInstrumentInput,
     FinancialPeriodInput,
     FinancialSpreadInput,
     MoneyValue,
 )
+from northstar_policy import load_policy
 
 
 def money(value: int) -> MoneyValue:
@@ -148,3 +150,74 @@ def test_debt_mismatch_blocks_decision_and_itemized_cfads_flows_to_capacity() ->
     assert result.debt_reconciliation.status == "blocked"
     assert result.analysis_status == "blocked"
     assert result.pricing.status == "blocked"
+
+
+def test_partial_schedule_labels_residual_and_abl_availability_is_net_of_drawn() -> (
+    None
+):
+    case = load_demo_case("stable-manufacturer")
+    instrument = DebtInstrumentInput(
+        name="Long-term schedule only",
+        principal=case.financials.long_term_debt,
+        annual_rate=Decimal("0.06"),
+        scheduled_amortization=money(100_000_000),
+        maturity_year=5,
+    )
+    result = analyze_case(case.model_copy(update={"debt_instruments": [instrument]}))
+    assert result.debt_reconciliation is not None
+    assert result.debt_reconciliation.aggregate_mode is True
+    assert result.debt_reconciliation.residual_debt is not None
+    assert "residual" in result.debt_reconciliation.coverage_basis_notice
+
+    raw = case.model_dump(mode="python")
+    raw["request"].update(
+        {
+            "facility_type": "asset_based",
+            "security_type": "asset_based",
+            "amortization_type": "revolver",
+            "initial_drawn_amount": money(500_000_000),
+        }
+    )
+    raw["borrowing_base"] = {
+        "accounts_receivable": {
+            "gross_receivables": money(1_000_000_000),
+            "ineligible_receivables": money(0),
+            "past_due_receivables": money(0),
+            "cross_aged_receivables": money(0),
+            "foreign_receivables": money(0),
+            "concentration_reserve": money(0),
+            "dilution_reserve": money(0),
+            "advance_rate": "0.80",
+        },
+        "inventory": {
+            "gross_inventory": money(0),
+            "ineligible_inventory": money(0),
+            "obsolete_inventory": money(0),
+            "advance_rate": "0.50",
+            "inventory_cap": money(0),
+        },
+        "other_collateral": {
+            "equipment": money(0),
+            "real_estate": money(0),
+            "cash": money(0),
+            "other": money(0),
+        },
+        "additional_reserves": money(0),
+        "prior_liens": money(0),
+    }
+    abl = case.model_validate(raw)
+    base = calculate_borrowing_base(abl, load_policy()[0])
+    assert base.borrowing_base is not None and base.availability is not None
+    assert base.borrowing_base.amount_minor == 800_000_000
+    assert base.availability.amount_minor == 300_000_000
+    assert base.commitment is not None and base.outstanding is not None
+
+
+def test_rate_decision_and_bullet_exit_are_explicit() -> None:
+    case = load_demo_case("software-services")
+    result = analyze_case(case)
+    assert result.rate_decision is not None
+    assert result.rate_decision.underwritten_rate == result.capacity.underwritten_rate
+    assert result.facility_mechanics is not None
+    assert result.facility_mechanics.amortization_type == "partial"
+    assert result.scenarios[0].maturity_test_status in {"pass", "breach", "blocked"}
