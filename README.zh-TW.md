@@ -84,6 +84,7 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 ## 文件
 
 - [目前發布狀態](docs/release-status.md)
+- [v6 模型一致性強化規格](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [方法論](docs/methodology.md)
 - [目前模型限制](docs/release-status.md#current-limitations)
 - [測試證據](docs/release-status.md#verification-at-release-authoring)

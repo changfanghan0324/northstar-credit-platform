@@ -4,6 +4,8 @@ Status: **Portfolio Demo Mode release — verified for synthetic educational use
 
 This is the single current release truth. Historical audits and debate logs remain in the repository for traceability but do not override this page.
 
+The next, not-yet-implemented hardening specification is [Northstar v6 — Final Credit Model Consistency](prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md). It is a future work specification, not a claim that the current Portfolio Demo Mode release is v6-complete.
+
 ## Release coordinates
 
 - Release commit: `ea797c1b6d59934a1f7b8b8e6405c1aeac2aeae6`

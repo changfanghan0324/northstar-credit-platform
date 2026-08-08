@@ -98,6 +98,7 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 ## Documentation
 
 - [Current release status](docs/release-status.md)
+- [v6 model-consistency hardening prompt](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [Methodology](docs/methodology.md)
 - [Current model limitations](docs/release-status.md#current-limitations)
 - [Test evidence](docs/release-status.md#verification-at-release-authoring)
