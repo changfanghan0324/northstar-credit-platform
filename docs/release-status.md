@@ -6,9 +6,9 @@ This is the single current release truth. Historical audits and debate logs rema
 
 ## Release coordinates
 
-- Release commit: finalized in the release commit after this document is updated
+- Release commit: `ea797c1b6d59934a1f7b8b8e6405c1aeac2aeae6`
 - Production URL: https://northstar-credit-platform.vercel.app
-- Deployment: production alias verified after the final application build
+- Vercel deployment: `dpl_HG6b9t5t4aJRxsPEzrgJcc6dtQ2k` (READY; production alias verified)
 - Product mode: Portfolio Demo Mode (synthetic, anonymous, temporary seven-day cases)
 
 ## Verification at release authoring
@@ -18,6 +18,7 @@ This is the single current release truth. Historical audits and debate logs rema
 - English and Traditional Chinese routes, API health/runtime endpoints, demo-case lifecycle, and English/Traditional Chinese PDF generation are release smoke checks.
 - Claude Code recorded an actual `claude-opus-5` High-effort independent challenge (`78e19b11-a37b-4c55-81bd-2aa2e9b908a5`); disposition is open-risk challenge, not external approval.
 - Final re-review (`6597c696-e6e3-499c-999a-1dc4e67395b8`) is fit to demonstrate within Portfolio Demo Mode, not fit to decide; residual debt and ABL availability artifacts are now exposed and covered by regression tests.
+- Final production smoke: English/Traditional Chinese home routes, `/health`, `/runtime`, and `/demo-cases` returned 200; all three demo opens returned 200 with distinct outcomes; detailed PDF returned 200 in English (10,907 bytes, 5 pages) and Traditional Chinese (86,492 bytes, 4 pages); Vercel runtime error clusters: none in the last hour.
 
 ## Current limitations
 
