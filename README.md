@@ -97,7 +97,11 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 
 ## Documentation
 
+- [Current release status](docs/release-status.md)
 - [Methodology](docs/methodology.md)
+- [Current model limitations](docs/release-status.md#current-limitations)
+- [Test evidence](docs/release-status.md#verification-at-release-authoring)
+- [Demo cases](data/demo_cases/)
 - [Recovery audit](docs/architecture/recovery-audit.md)
 - [Data model](docs/architecture/data-model.md)
 - [Design system and concept fidelity](docs/product/design-system.md)
@@ -114,6 +118,12 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [v4 independent audit](docs/audits/final-independent-audit-v4.md)
 - [v4 implementation task board](docs/implementation-task-board-v4.md)
 - [v4 Claude Opus 5 High challenge](docs/collaboration/v4-claude-opus-5-review.md)
+
+### Historical review records
+
+The v3/v4 audits, task boards, and debate logs above are retained as historical
+evidence. The current product claim, test count, deployment, and limitations are
+maintained only in [Current release status](docs/release-status.md).
 
 The independent collaboration record is repository evidence only; it is deliberately
 not used as a product-interface marketing claim.

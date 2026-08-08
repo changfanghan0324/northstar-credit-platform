@@ -10,7 +10,16 @@
   "request": {
     "amount": {"amount_minor": 2000000000},
     "purpose": "Refinance existing debt and fund product development",
-    "annual_rate": "0.085"
+    "annual_rate": "0.085",
+    "maturity_years": 6,
+    "facility_type": "term_loan",
+    "security_type": "unsecured",
+    "rate_type": "fixed",
+    "amortization_type": "partial",
+    "amortization_years": 5,
+    "bullet_percentage": "0.50",
+    "commitment_fee_bps": 0,
+    "upfront_fee_bps": 50
   },
   "financials": {
     "revenue": {"amount_minor": 15000000000},
@@ -23,7 +32,7 @@
     "capex": {"amount_minor": 500000000},
     "maintenance_capex": {"amount_minor": 450000000},
     "cash_taxes": {"amount_minor": 300000000},
-    "working_capital_increase": {"amount_minor": -250000000},
+    "working_capital_increase": {"amount_minor": 427013529},
     "cash_interest": {"amount_minor": 350000000},
     "scheduled_principal": {"amount_minor": 400000000},
     "long_term_debt": {"amount_minor": 3500000000},

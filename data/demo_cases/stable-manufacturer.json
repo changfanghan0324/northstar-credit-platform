@@ -10,7 +10,15 @@
     "amount": {"amount_minor": 1500000000, "currency": "USD", "minor_unit_exponent": 2},
     "purpose": "Fund a new production line and refinance near-term maturities",
     "annual_rate": "0.08",
-    "maturity_years": 5
+    "maturity_years": 5,
+    "facility_type": "term_loan",
+    "security_type": "secured",
+    "rate_type": "fixed",
+    "amortization_type": "fully_amortizing",
+    "amortization_years": 5,
+    "bullet_percentage": "0",
+    "commitment_fee_bps": 0,
+    "upfront_fee_bps": 50
   },
   "financials": {
     "revenue": {"amount_minor": 20000000000},

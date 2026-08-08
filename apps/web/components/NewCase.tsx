@@ -229,6 +229,18 @@ export function NewCase({ language }: { language: Language }) {
   function patchRequest(key: keyof CaseInput["request"], value: unknown) {
     if (input) patchInput({ request: { ...input.request, [key]: value } });
   }
+  function percentDisplay(value: string | number): string {
+    if (entryMode === "analyst") return String(value);
+    const numeric = Number(value);
+    return Number.isFinite(numeric)
+      ? `${(numeric * 100).toFixed(2).replace(/\.00$/, "")}%`
+      : `${value}%`;
+  }
+  function percentValue(value: string): string {
+    if (entryMode === "analyst") return value;
+    const numeric = Number(value.trim().replace(/%$/, ""));
+    return Number.isFinite(numeric) ? String(numeric / 100) : value;
+  }
   function parsedAmount(value: string, current: Money): number | null {
     const parsed = parseMoneyInput(
       value,
@@ -373,6 +385,24 @@ export function NewCase({ language }: { language: Language }) {
     );
 
   const locale = zh ? "zh-TW" : "en-US";
+  const requiredChecks = [
+    Boolean(input.borrower.legal_name.trim()),
+    Boolean(input.borrower.description.trim()),
+    input.request.amount.amount_minor > 0,
+    Boolean(input.request.purpose.trim()),
+    Number(input.request.annual_rate) > 0,
+    input.request.maturity_years > 0,
+    (input.financials.revenue as Money).amount_minor > 0,
+    (input.financials.cfo as Money).amount_minor !== 0,
+    (input.financials.cash_interest as Money).amount_minor >= 0,
+    (input.financials.scheduled_principal as Money).amount_minor >= 0,
+    input.business_risk.strengths.length > 0,
+    input.business_risk.risks.length > 0,
+  ];
+  const requiredCompleted = requiredChecks.filter(Boolean).length;
+  const completion = Math.round(
+    (requiredCompleted / requiredChecks.length) * 100,
+  );
   return (
     <>
       <Header language={language} />
@@ -441,11 +471,11 @@ export function NewCase({ language }: { language: Language }) {
             </label>
           </div>
         </div>
-        <div className="wizard-progress" aria-live="polite">
+        <div className="wizard-progress">
           <span>
             {zh
-              ? `完成度 ${Math.round(((step + 1) / 7) * 100)}%`
-              : `${Math.round(((step + 1) / 7) * 100)}% complete`}
+              ? `必要欄位 ${requiredCompleted}/${requiredChecks.length}（${completion}%）`
+              : `${requiredCompleted}/${requiredChecks.length} required fields (${completion}%)`}
           </span>
           <span>
             {zh
@@ -479,7 +509,20 @@ export function NewCase({ language }: { language: Language }) {
             </li>
           ))}
         </ol>
-        <section className="wizard-panel" aria-live="polite">
+        <div className="wizard-status" aria-live="polite" role="status">
+          {review
+            ? review.valid
+              ? zh
+                ? "輸入驗證通過"
+                : "Input validation passed"
+              : zh
+                ? `尚缺 ${review.missing.length} 項必要資料`
+                : `${review.missing.length} required items remain`
+            : zh
+              ? "完成必要欄位後進行驗證"
+              : "Complete required fields before validation"}
+        </div>
+        <section className="wizard-panel">
           {step === 0 && (
             <>
               <h2>{zh ? "借款人是誰？" : "Who is the borrower?"}</h2>
@@ -610,11 +653,18 @@ export function NewCase({ language }: { language: Language }) {
                   </select>
                 </label>
                 <label>
-                  {zh ? "年利率（小數）" : "Annual rate (decimal)"}
+                  {zh
+                    ? entryMode === "guided"
+                      ? "年利率（百分比）"
+                      : "年利率（小數）"
+                    : entryMode === "guided"
+                      ? "Annual rate (%)"
+                      : "Annual rate (decimal)"}
                   <input
-                    value={input.request.annual_rate}
+                    inputMode="decimal"
+                    value={percentDisplay(input.request.annual_rate)}
                     onChange={(e) =>
-                      patchRequest("annual_rate", e.target.value)
+                      patchRequest("annual_rate", percentValue(e.target.value))
                     }
                   />
                 </label>
@@ -709,29 +759,43 @@ export function NewCase({ language }: { language: Language }) {
                   ))}
                 <label>
                   {zh
-                    ? "可用現金比例（小數）"
-                    : "Cash availability factor (decimal)"}
+                    ? entryMode === "guided"
+                      ? "可用現金比例（百分比）"
+                      : "可用現金比例（小數）"
+                    : entryMode === "guided"
+                      ? "Cash availability (%)"
+                      : "Cash availability factor (decimal)"}
                   <input
-                    value={String(input.financials.cash_availability_factor)}
+                    inputMode="decimal"
+                    value={percentDisplay(
+                      String(input.financials.cash_availability_factor),
+                    )}
                     onChange={(e) =>
                       patchInput({
                         financials: {
                           ...input.financials,
-                          cash_availability_factor: e.target.value,
+                          cash_availability_factor: percentValue(e.target.value),
                         },
                       })
                     }
                   />
                 </label>
                 <label>
-                  {zh ? "現金稅率（小數）" : "Cash tax rate (decimal)"}
+                  {zh
+                    ? entryMode === "guided"
+                      ? "現金稅率（百分比）"
+                      : "現金稅率（小數）"
+                    : entryMode === "guided"
+                      ? "Cash tax rate (%)"
+                      : "Cash tax rate (decimal)"}
                   <input
-                    value={String(input.financials.tax_rate)}
+                    inputMode="decimal"
+                    value={percentDisplay(String(input.financials.tax_rate))}
                     onChange={(e) =>
                       patchInput({
                         financials: {
                           ...input.financials,
-                          tax_rate: e.target.value,
+                          tax_rate: percentValue(e.target.value),
                         },
                       })
                     }
@@ -1118,9 +1182,10 @@ export function NewCase({ language }: { language: Language }) {
                       <label key={key}>
                         {scenarioFieldLabel(key, zh)}
                         <input
-                          value={input.scenarios[name][key]}
+                          inputMode="decimal"
+                          value={percentDisplay(input.scenarios[name][key])}
                           onChange={(e) =>
-                            patchScenario(name, key, e.target.value)
+                            patchScenario(name, key, percentValue(e.target.value))
                           }
                         />
                       </label>
@@ -1137,6 +1202,44 @@ export function NewCase({ language }: { language: Language }) {
                   ? "準備好執行授信分析了嗎？"
                   : "Ready to run the credit analysis?"}
               </h2>
+              <div className="review-provenance" role="note">
+                <p>
+                  {zh
+                    ? `目前範本：${template}；已編輯借款人與授信資料後，請確認其餘財務與情境仍屬此範本。`
+                    : `Current template: ${template}. Confirm that unchanged financials and scenarios still belong to this borrower.`}
+                </p>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() =>
+                      setInput((current) =>
+                        current
+                          ? {
+                              ...current,
+                              borrower: {
+                                ...current.borrower,
+                                legal_name: "",
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  >
+                    {zh ? "清除借款人名稱" : "Clear borrower name"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setInput(null);
+                      setStep(0);
+                    }}
+                  >
+                    {zh ? "重設為範本" : "Reset to template"}
+                  </button>
+                </div>
+              </div>
               <div className="review-summary">
                 <dl>
                   <div>

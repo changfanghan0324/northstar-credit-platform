@@ -10,7 +10,18 @@
   "request": {
     "amount": {"amount_minor": 2800000000},
     "purpose": "Acquire two regional distribution centers and expand working-capital capacity",
-    "annual_rate": "0.095"
+    "annual_rate": "0.095",
+    "maturity_years": 4,
+    "facility_type": "asset_based",
+    "security_type": "asset_based",
+    "rate_type": "floating",
+    "base_rate": "0.055",
+    "rate_floor": "0.03",
+    "amortization_type": "revolver",
+    "initial_drawn_amount": {"amount_minor": 1400000000},
+    "commitment_fee_bps": 35,
+    "upfront_fee_bps": 50,
+    "availability_period_years": 4
   },
   "financials": {
     "revenue": {"amount_minor": 24000000000},

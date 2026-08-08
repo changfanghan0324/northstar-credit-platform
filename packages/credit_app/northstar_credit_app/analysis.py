@@ -39,10 +39,14 @@ from .models import (
     CapacityView,
     CaseInput,
     CovenantView,
+    DebtReconciliationView,
     DecisionView,
+    FinancialInput,
     MoneyValue,
     PolicyCheckView,
+    RateDecisionView,
     RatioView,
+    ResolvedFacilityMechanics,
     ReverseStressView,
     ScenarioView,
     ScenarioYearView,
@@ -86,6 +90,204 @@ def _new_money(amount_minor: int, template: Money) -> Money:
         amount_minor=amount_minor,
         currency=template.currency,
         minor_unit_exponent=template.minor_unit_exponent,
+    )
+
+
+def _signed_adjustment_total(case: CaseInput, field: str) -> int:
+    approved = [
+        item
+        for item in case.normalization_adjustments
+        if item.approval_status == "approved"
+    ]
+    if not approved:
+        return 0
+    return sum(
+        abs(getattr(item, field).amount_minor)
+        * (1 if item.direction == "positive" else -1)
+        for item in approved
+    )
+
+
+def _resolve_facility_mechanics(case: CaseInput) -> ResolvedFacilityMechanics:
+    request = case.request
+    kind = (
+        "revolver"
+        if request.facility_type == "asset_based"
+        else request.amortization_type
+    )
+    if kind is None:
+        kind = (
+            "revolver"
+            if request.facility_type in {"revolver", "asset_based"}
+            else "fully_amortizing"
+            if request.amortization_years is not None
+            else "bullet"
+        )
+    initial = request.initial_drawn_amount or request.amount.model_copy(
+        update={"amount_minor": 0}
+    )
+    return ResolvedFacilityMechanics(
+        facility_type=request.facility_type,
+        amortization_type=kind,
+        commitment=request.amount,
+        initial_drawn=initial,
+        bullet_percentage=str(request.bullet_percentage),
+        amortization_years=request.amortization_years,
+        maturity_years=request.maturity_years,
+        availability_period_years=request.availability_period_years,
+        commitment_fee_bps=request.commitment_fee_bps,
+        mandatory_prepayment=str(request.mandatory_prepayment),
+        security_type=request.security_type,
+        status="available",
+        explanation="Resolved once from explicit facility mechanics and reused by downstream views.",
+    )
+
+
+def _rate_decision(case: CaseInput, pricing_rate: Decimal | None) -> RateDecisionView:
+    index = (
+        case.request.base_rate
+        if case.request.rate_type == "floating"
+        else case.pricing.reference_base_rate
+    )
+    floor = case.request.rate_floor
+    underwritten_index = max(index, floor)
+    all_in = (
+        pricing_rate
+        if pricing_rate is not None
+        else underwritten_index + case.request.annual_rate - case.request.base_rate
+    )
+    spread_bps = max(
+        0, int(((all_in - underwritten_index) * Decimal(10000)).quantize(Decimal(1)))
+    )
+    return RateDecisionView(
+        index_rate=str(index),
+        floor_rate=str(floor),
+        shocked_index_rate=str(underwritten_index),
+        spread_bps=spread_bps,
+        underwritten_rate=str(all_in.quantize(Decimal("0.0001"))),
+        commitment_fee_bps=case.request.commitment_fee_bps,
+        upfront_fee_bps=case.request.upfront_fee_bps,
+        status="available" if pricing_rate is not None else "blocked",
+        explanation="Floor applies to the index; the spread is applied once and the resulting rate is the underwritten rate.",
+    )
+
+
+def _reconcile_debt(
+    case: CaseInput, financials: FinancialInput
+) -> DebtReconciliationView:
+    template = case.request.amount
+    balance_minor = sum(
+        getattr(financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    balance = MoneyValue(
+        amount_minor=balance_minor,
+        currency=template.currency,
+        minor_unit_exponent=template.minor_unit_exponent,
+    )
+    reported_interest = financials.cash_interest
+    if not case.debt_instruments:
+        return DebtReconciliationView(
+            status="aggregate_mode",
+            balance_sheet_gross_debt=balance,
+            instrument_gross_debt=None,
+            scheduled_principal=None,
+            implied_interest=None,
+            reported_interest=reported_interest,
+            difference=None,
+            tolerance=MoneyValue(
+                amount_minor=1,
+                currency=template.currency,
+                minor_unit_exponent=template.minor_unit_exponent,
+            ),
+            explanation="No instrument schedule supplied; aggregate balance-sheet debt is used consistently.",
+            leverage_source="balance_sheet_aggregate",
+            stress_source="balance_sheet_aggregate",
+            maturity_source="not_supplied",
+            aggregate_mode=True,
+        )
+    instrument_minor = sum(
+        item.principal.amount_minor for item in case.debt_instruments
+    )
+    scheduled_minor = sum(
+        item.scheduled_amortization.amount_minor for item in case.debt_instruments
+    )
+    implied_minor = sum(
+        int(
+            (Decimal(item.principal.amount_minor) * item.annual_rate).quantize(
+                Decimal(1)
+            )
+        )
+        for item in case.debt_instruments
+    )
+    difference = balance_minor - instrument_minor
+    # A schedule that explicitly covers only the long-term debt line is a
+    # governed partial schedule; short-term debt, leases, and current maturities
+    # remain on the aggregate balance-sheet basis rather than creating a false
+    # mismatch. Any other unexplained difference remains a hard stop.
+    partial_long_term_schedule = (
+        instrument_minor == case.financials.long_term_debt.amount_minor
+        and case.financials.long_term_debt.amount_minor > 0
+        and difference >= 0
+    )
+    tolerance_minor = max(1, int(abs(balance_minor) * Decimal("0.005")))
+    status = (
+        "reconciled"
+        if difference == 0 or partial_long_term_schedule
+        else "immaterial_difference"
+        if abs(difference) <= tolerance_minor
+        else "blocked"
+    )
+    return DebtReconciliationView(
+        status=cast(
+            Literal["reconciled", "immaterial_difference", "blocked", "aggregate_mode"],
+            status,
+        ),
+        balance_sheet_gross_debt=balance,
+        instrument_gross_debt=MoneyValue(
+            amount_minor=instrument_minor,
+            currency=template.currency,
+            minor_unit_exponent=template.minor_unit_exponent,
+        ),
+        scheduled_principal=MoneyValue(
+            amount_minor=scheduled_minor,
+            currency=template.currency,
+            minor_unit_exponent=template.minor_unit_exponent,
+        ),
+        implied_interest=MoneyValue(
+            amount_minor=implied_minor,
+            currency=template.currency,
+            minor_unit_exponent=template.minor_unit_exponent,
+        ),
+        reported_interest=reported_interest,
+        difference=MoneyValue(
+            amount_minor=difference,
+            currency=template.currency,
+            minor_unit_exponent=template.minor_unit_exponent,
+        ),
+        tolerance=MoneyValue(
+            amount_minor=tolerance_minor,
+            currency=template.currency,
+            minor_unit_exponent=template.minor_unit_exponent,
+        ),
+        explanation=(
+            "Instrument schedule reconciles to the balance sheet."
+            if difference == 0
+            else "Partial long-term schedule is explicitly combined with aggregate current and lease debt."
+            if partial_long_term_schedule
+            else "Difference is within the governed tolerance."
+            if status == "immaterial_difference"
+            else "Debt schedule does not reconcile to the balance sheet; leverage, stress, and maturity outputs are blocked."
+        ),
+        leverage_source="balance_sheet_and_instrument_schedule",
+        stress_source="balance_sheet_and_instrument_schedule",
+        maturity_source="instrument_schedule",
+        aggregate_mode=False,
     )
 
 
@@ -404,9 +606,11 @@ def _underwritten_rate(case: CaseInput, pricing_rate: Decimal | None = None) -> 
 
 
 def _amortization_kind(case: CaseInput) -> str:
+    if case.request.facility_type == "asset_based":
+        return "revolver"
     if case.request.amortization_type is not None:
         return case.request.amortization_type
-    if case.request.facility_type == "revolver":
+    if case.request.facility_type in {"revolver", "asset_based"}:
         return "revolver"
     return (
         "fully_amortizing" if case.request.amortization_years is not None else "bullet"
@@ -817,12 +1021,48 @@ def _scenario(
                 ),
             )
         )
+    maturity_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
+        "not_applicable"
+    )
+    maturity_reason = "No bullet or partial balloon is present."
+    balloon_amount: MoneyValue | None = None
+    exit_leverage: str | None = None
+    if amortization_kind in {"bullet", "partial"}:
+        horizon = max(case.request.maturity_years, 3)
+        exit_revenue = (
+            Decimal(case.financials.revenue.amount_minor)
+            * (ONE + assumptions.revenue_growth) ** horizon
+        )
+        exit_ebitda = exit_revenue * initial_margin
+        balloon_minor = int(
+            (Decimal(commitment) * case.request.bullet_percentage).quantize(Decimal(1))
+        )
+        exit_debt = Decimal(years[-1].ending_debt.amount_minor) + Decimal(balloon_minor)
+        balloon_amount = _view(_new_money(balloon_minor, revenue))
+        if exit_ebitda <= 0:
+            maturity_status = "blocked"
+            maturity_reason = "Exit EBITDA is not positive; maturity refinance capacity cannot be tested."
+        else:
+            exit_ratio = exit_debt / exit_ebitda
+            exit_leverage = str(exit_ratio.quantize(Decimal("0.0001")))
+            maturity_status = (
+                "pass" if exit_ratio <= policy.maximum_leverage else "breach"
+            )
+            maturity_reason = (
+                "Balloon repayment is within policy exit leverage capacity."
+                if maturity_status == "pass"
+                else "Balloon repayment exceeds policy exit leverage capacity; refinancing or additional support is required."
+            )
     return ScenarioView(
         name=cast(Literal["base", "downside", "severe"], name),
         years=years,
         first_breach_year=first_breach,
         first_stress_event_year=first_stress_event,
         liquidity_exhaustion_year=liquidity_exhaustion,
+        maturity_test_status=maturity_status,
+        maturity_test_reason=maturity_reason,
+        balloon_amount=balloon_amount,
+        exit_leverage=exit_leverage,
     )
 
 
@@ -1550,12 +1790,31 @@ def _decision(
         conditions.append(
             "Perfect and maintain the proposed collateral security interest."
         )
+    if outcome == "Decline":
+        conditions = []
+        monitoring: list[str] = []
+        secondary_source = (
+            "No collateral-based secondary repayment source is recognized for an unsecured declined facility."
+            if case.request.security_type == "unsecured"
+            else "No active-loan conditions; reconsider only after the listed prerequisites are satisfied."
+        )
+    else:
+        monitoring = [
+            "Quarterly financial statements",
+            "Annual covenant compliance certificate",
+            "Prompt notice of material adverse events",
+        ]
+        secondary_source = (
+            "No collateral-based secondary repayment source; refinancing is not assumed."
+            if case.request.security_type == "unsecured"
+            else "Eligible borrower collateral subject to documented advance rates; refinancing is not assumed."
+        )
     return DecisionView(
         outcome=outcome,  # type: ignore[arg-type]
         rationale=rationale,
         conditions=conditions,
         primary_repayment_source=case.request.primary_repayment_source,
-        secondary_repayment_source="Eligible collateral and enterprise-value support; refinancing is not assumed.",
+        secondary_repayment_source=secondary_source,
         facility_type=case.request.facility_type,
         maturity_years=case.request.maturity_years,
         amortization_years=case.request.amortization_years
@@ -1566,11 +1825,7 @@ def _decision(
             else "Eligible borrower assets subject to documented advance rates"
         ),
         guarantee=case.request.guarantee,
-        monitoring=[
-            "Quarterly financial statements",
-            "Annual covenant compliance certificate",
-            "Prompt notice of material adverse events",
-        ],
+        monitoring=monitoring,
         policy_exceptions=[
             item.label for item in policy_checks if item.status == "warning"
         ],
@@ -1583,8 +1838,10 @@ def analyze_case(
 ) -> AnalysisResult:
     policy, policy_hash = load_policy()
     resolution = resolve_underwriting_financials(case)
+    debt_reconciliation = _reconcile_debt(case, resolution.financials)
     canonical_blocked = bool(
-        case.financial_spread.periods and resolution.snapshot.blocking_issues
+        (case.financial_spread.periods and resolution.snapshot.blocking_issues)
+        or debt_reconciliation.status == "blocked"
     )
     # Every downstream consumer receives the same resolved financial object. A
     # failed non-empty spread remains blocked; it is never silently replaced by
@@ -1649,6 +1906,15 @@ def analyze_case(
         ),
         mandatory_pension_contributions=_money(financials.mandatory_pension),
     )
+    # Approved itemized adjustments are authoritative. Their explicit CFADS
+    # impacts flow into capacity, stress, ratios, and the memo; draft/rejected
+    # entries and legacy aggregates do not.
+    if approved_adjustments:
+        cash_available = _new_money(
+            cash_available.amount_minor
+            + _signed_adjustment_total(case, "cfads_impact"),
+            cash_available,
+        )
     service = annual_debt_service(
         cash_interest=_money(financials.cash_interest),
         scheduled_principal=_money(financials.scheduled_principal),
@@ -1710,6 +1976,8 @@ def analyze_case(
         else Decimal(pricing.indicative_all_in_rate)
     )
     underwritten_rate = _underwritten_rate(case, pricing_rate)
+    rate_decision = _rate_decision(case, pricing_rate)
+    facility_mechanics = _resolve_facility_mechanics(case)
     capacity = _capacity(
         case,
         policy,
@@ -1893,6 +2161,9 @@ def analyze_case(
         metrics={key: _ratio_view(value) for key, value in metrics_raw.items()},
         financial_spreading=financial_spreading,
         adjustments=adjustments,
+        rate_decision=rate_decision,
+        debt_reconciliation=debt_reconciliation,
+        facility_mechanics=facility_mechanics,
         capacity=capacity,
         facility_protection=facility_protection,
         borrowing_base=borrowing_base,

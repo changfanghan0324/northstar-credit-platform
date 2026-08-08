@@ -30,18 +30,11 @@ class FinancialResolution:
     snapshot: ResolvedFinancialSnapshot
 
 
-_SCALE_MULTIPLIER = {
-    "whole": 1,
-    "thousands": 1_000,
-    "millions": 1_000_000,
-}
-
-
 def _snapshot_hash(
     financials: FinancialInput, *, basis: str, source_period_ids: list[str]
 ) -> str:
     payload = {
-        "resolver_version": "v4.1",
+        "resolver_version": "v5.0",
         "basis": basis,
         "source_period_ids": source_period_ids,
         "financials": financials.model_dump(mode="json"),
@@ -62,9 +55,11 @@ def _period_money(
         return None
     if value.currency != period.currency:
         return None
-    multiplier = _SCALE_MULTIPLIER[period.scale]
+    # FinancialPeriod.scale is display/import metadata. Values crossing the API
+    # boundary are already normalized to exact minor units by the editor/importer;
+    # multiplying here would double-scale thousands and millions.
     return MoneyValue(
-        amount_minor=value.amount_minor * multiplier,
+        amount_minor=value.amount_minor,
         currency=template.currency,
         minor_unit_exponent=template.minor_unit_exponent,
     )
@@ -326,11 +321,14 @@ def _derived_financials(
             lineage[field] = [item.id for item in selected]
         else:
             lineage[field] = ["legacy_snapshot"]
+    balance_source = (
+        selected[1] if flow_mode == "fy_ytd" and len(selected) == 3 else selected[-1]
+    )
     for field, (statement, source_field) in balance_fields.items():
-        value = _period_money(selected[-1], statement, source_field, template)
+        value = _period_money(balance_source, statement, source_field, template)
         if value is not None:
             updates[field] = value
-            lineage[field] = [selected[-1].id]
+            lineage[field] = [balance_source.id]
         else:
             lineage[field] = ["legacy_snapshot"]
     # EBITDA may be directly reported or derived from EBIT + D&A. Never inherit
@@ -411,6 +409,9 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
             source_period_ids=[],
             source_lineage={
                 field: ["legacy_snapshot"] for field in FinancialInput.model_fields
+            },
+            source_authority={
+                field: "legacy_snapshot" for field in FinancialInput.model_fields
             },
             financials=case.financials,
             reconciliation_status="warning",
@@ -510,6 +511,7 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
             period_end=None,
             source_period_ids=[],
             source_lineage={},
+            source_authority={},
             financials=case.financials,
             reconciliation_status="blocked",
             blocking_issues=sorted(set(issues)),
@@ -527,13 +529,27 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
         quality_warnings.append("At least one selected period is restated")
     if any(item.pro_forma for item in selected):
         quality_warnings.append("At least one selected period is pro forma")
+    # Decision-critical lines may not silently inherit a legacy value after an
+    # analyst supplied a non-empty spread. Debt schedule reconciliation can add
+    # instrument-level detail, but the canonical balance sheet still needs its
+    # own source for these headline metrics.
     core_fields = (
         "revenue",
         "ebitda",
+        "ebit",
+        "cash_taxes",
         "cfo",
         "cash_interest",
         "maintenance_capex",
+        "working_capital_increase",
+        "scheduled_principal",
         "unrestricted_cash",
+        "current_assets",
+        "current_liabilities",
+        "short_term_borrowings",
+        "current_maturities",
+        "long_term_debt",
+        "finance_leases",
         "total_assets",
         "total_liabilities",
         "equity",
@@ -557,7 +573,7 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
     )
     if abs(bs_difference) > 1:
         issues.append(
-            f"{selected[-1].label}: assets do not reconcile to liabilities plus equity ({bs_difference} minor units)"
+            f"{selected[1].label if flow_mode == 'fy_ytd' and len(selected) == 3 else selected[-1].label}: assets do not reconcile to liabilities plus equity ({bs_difference} minor units)"
         )
     status = (
         "blocked"
@@ -579,7 +595,19 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
         ),
         period_end=selected[-1].end_date,
         source_period_ids=[item.id for item in selected],
+        flow_source_period_ids=[item.id for item in selected],
+        balance_sheet_source_period_id=(
+            selected[1].id
+            if flow_mode == "fy_ytd" and len(selected) == 3
+            else selected[-1].id
+        ),
         source_lineage=lineage,
+        source_authority={
+            field: (
+                "legacy_snapshot" if source == ["legacy_snapshot"] else "period_spread"
+            )
+            for field, source in lineage.items()
+        },
         financials=resolved,
         reconciliation_status=status,  # type: ignore[arg-type]
         warnings=[
@@ -762,6 +790,15 @@ def summarize_adjustments(
             case.financials.positive_ebitda_adjustments.amount_minor
             - case.financials.negative_ebitda_adjustments.amount_minor
         )
+    signed_ebit = sum(
+        abs(item.ebit_impact.amount_minor) * (1 if item.direction == "positive" else -1)
+        for item in approved
+    )
+    signed_cfads = sum(
+        abs(item.cfads_impact.amount_minor)
+        * (1 if item.direction == "positive" else -1)
+        for item in approved
+    )
     positive_minor = sum(
         abs(item.ebitda_impact.amount_minor)
         for item in approved
@@ -812,6 +849,8 @@ def summarize_adjustments(
         reported_ebitda=_money(reported_minor, template),
         approved_adjustment=_money(adjustment_minor, template),
         adjusted_ebitda=_money(adjusted_ebitda_value.amount_minor, template),
+        approved_ebit=_money(signed_ebit, template),
+        approved_cfads_impact=_money(signed_cfads, template),
         positive_adjustment_pct=str(positive_pct.quantize(Decimal("0.0001"))),
         warning=(
             "Positive adjustments exceed the illustrative policy threshold."

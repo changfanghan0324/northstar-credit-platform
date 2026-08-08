@@ -11,7 +11,39 @@ This document is the specification shared by the Python engine and the independe
 
 ### 1.1 Money
 
-Normalized monetary values are `{amount_minor: int, currency: ISO-4217 code, minor_unit_exponent: int}`. USD uses exponent 2, JPY 0, and KWD 3. Raw-file scale is converted exactly once during normalization and the original unit, reported scale, and applied multiplier remain in lineage. Money arithmetic never uses binary floating point. [Master prompt §17, §19]
+Normalized monetary values are `{amount_minor: int, currency: ISO-4217 code, minor_unit_exponent: int}`. USD uses exponent 2, JPY 0, and KWD 3. Whole/thousands/millions is display/import metadata only; the browser/API boundary normalizes to actual minor units exactly once, and the resolver never multiplies again. Money arithmetic never uses binary floating point. [v5 scale contract]
+
+## v5 behavior groups
+
+<details><summary>1. Data and spreading</summary>
+
+The canonical snapshot records its hash, selected flow periods, current-YTD balance-sheet source, metric-level lineage, source authority, and validation state. FY + current YTD − prior YTD composes flow lines; point-in-time balance-sheet lines come from current YTD. A non-empty invalid spread blocks decision-critical values rather than inheriting a legacy snapshot.
+
+</details>
+
+<details><summary>2. Borrower risk</summary>
+
+Reported EBITDA, EBIT, and CFADS effects are driven by approved itemized adjustments. Magnitude, evidence, recurrence, direction, reviewer, and policy checks are preserved; drafts and rejected entries do not affect results.
+
+</details>
+
+<details><summary>3. Facility and capacity</summary>
+
+One resolved facility-mechanics object drives term, partial, bullet, revolver, and asset-based structures. Revolver availability is distinct from borrowing base and commitment, other collateral uses configurable haircuts, and zero supported exposure is typed as not applicable. Debt schedules reconcile to balance-sheet debt before leverage, stress, and maturity outputs are relied upon.
+
+</details>
+
+<details><summary>4. Stress and decision</summary>
+
+One RateDecision applies floor/index/spread once to pricing, capacity, and stress. Bullet facilities receive an exit/maturity test even beyond the three-year forecast. Decision sections are outcome-specific: declines contain reasons and prerequisites, not active-loan covenants.
+
+</details>
+
+<details><summary>5. Governance and limitations</summary>
+
+Northstar remains Portfolio Demo Mode: synthetic, anonymous, session-scoped, temporary, educational, and not a bank, rating agency, market quote, regulated credit decision, or lending commitment. Public claims use “bank-style” and “committee-format,” not “committee-ready.”
+
+</details>
 
 MVP validation requires reporting currency, existing-debt currency, and requested-loan currency to match. A mismatch returns `currency_mismatch`, persists no partial calculation run, and tells the user that multi-currency cases are unsupported. [Master prompt §13, §14, §42]
 

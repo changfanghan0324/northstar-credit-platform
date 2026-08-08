@@ -83,7 +83,11 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 
 ## 文件
 
+- [目前發布狀態](docs/release-status.md)
 - [方法論](docs/methodology.md)
+- [目前模型限制](docs/release-status.md#current-limitations)
+- [測試證據](docs/release-status.md#verification-at-release-authoring)
+- [展示案例](data/demo_cases/)
 - [修正稽核](docs/architecture/recovery-audit.md)
 - [資料模型](docs/architecture/data-model.md)
 - [設計系統與概念忠實度](docs/product/design-system.md)
@@ -100,5 +104,10 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 - [v4 獨立稽核](docs/audits/final-independent-audit-v4.md)
 - [v4 修正任務板](docs/implementation-task-board-v4.md)
 - [v4 Claude Opus 5 High 挑戰紀錄](docs/collaboration/v4-claude-opus-5-review.md)
+
+### 歷史審查紀錄
+
+上列 v3／v4 稽核、任務板與辯論紀錄均保留作為歷史證據。現行產品宣稱、測試數、
+部署與限制，唯一以[目前發布狀態](docs/release-status.md)為準。
 
 跨模型協作紀錄僅作為 repository 證據，不會在產品介面中當作行銷宣稱。

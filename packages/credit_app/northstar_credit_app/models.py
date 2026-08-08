@@ -75,6 +75,15 @@ class LoanRequestInput(ContractModel):
             raise ValueError(
                 "revolver facilities require revolver amortization mechanics"
             )
+        if (
+            self.amortization_type == "fully_amortizing"
+            and self.amortization_years is None
+        ):
+            raise ValueError("fully amortizing facilities require amortization_years")
+        if self.amortization_type == "bullet" and self.amortization_years is not None:
+            raise ValueError(
+                "bullet facilities cannot specify scheduled amortization_years"
+            )
         if self.amortization_type == "bullet" and self.bullet_percentage <= 0:
             raise ValueError("bullet facilities require a positive bullet percentage")
         return self
@@ -92,6 +101,21 @@ class DebtInstrumentInput(ContractModel):
     secured: bool = False
     seniority: str = "Senior"
     collateral: str = "None"
+
+    @model_validator(mode="after")
+    def validate_debt(self) -> DebtInstrumentInput:
+        if (
+            self.principal.amount_minor < 0
+            or self.scheduled_amortization.amount_minor < 0
+        ):
+            raise ValueError(
+                "debt principal and scheduled amortization must be nonnegative"
+            )
+        if self.scheduled_amortization.amount_minor > self.principal.amount_minor:
+            raise ValueError(
+                "scheduled amortization cannot exceed instrument principal"
+            )
+        return self
 
 
 class IncomeStatementPeriodInput(ContractModel):
@@ -300,6 +324,8 @@ class NormalizationAdjustmentInput(ContractModel):
             raise ValueError(
                 "adjustment impacts must be nonnegative; direction carries the sign"
             )
+        if any(value.amount_minor > self.amount.amount_minor for value in impacts):
+            raise ValueError("adjustment impacts cannot exceed the supported amount")
         if self.approval_status == "approved" and (
             not self.supporting_evidence.strip() or not self.reviewer
         ):
@@ -420,6 +446,10 @@ class OtherCollateralInput(ContractModel):
     real_estate: MoneyValue
     cash: MoneyValue
     other: MoneyValue
+    equipment_advance_rate: Decimal = Field(default=Decimal("1.00"), ge=0, le=1)
+    real_estate_advance_rate: Decimal = Field(default=Decimal("0.50"), ge=0, le=1)
+    cash_advance_rate: Decimal = Field(default=Decimal("0.95"), ge=0, le=1)
+    other_advance_rate: Decimal = Field(default=Decimal("0.25"), ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_collateral(self) -> OtherCollateralInput:
@@ -625,13 +655,16 @@ class ResolvedFinancialSnapshot(ContractModel):
     """The immutable, explainable financial basis used by underwriting."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    resolver_version: str = "v4.1"
+    resolver_version: str = "v5.0"
     snapshot_hash: str
     basis: Literal["reported_ltm", "derived_ltm", "fiscal_year", "legacy_snapshot"]
     period_id: str
     period_end: date | None
     source_period_ids: list[str]
+    flow_source_period_ids: list[str] = Field(default_factory=list)
+    balance_sheet_source_period_id: str | None = None
     source_lineage: dict[str, list[str]]
+    source_authority: dict[str, str] = Field(default_factory=dict)
     financials: FinancialInput
     reconciliation_status: Literal["pass", "warning", "blocked"]
     warnings: list[str] = Field(default_factory=list)
@@ -643,6 +676,8 @@ class AdjustmentSummaryView(ContractModel):
     reported_ebitda: MoneyValue
     approved_adjustment: MoneyValue
     adjusted_ebitda: MoneyValue
+    approved_ebit: MoneyValue | None = None
+    approved_cfads_impact: MoneyValue | None = None
     positive_adjustment_pct: str
     warning: str | None
     leverage_before: str | None
@@ -653,8 +688,15 @@ class AdjustmentSummaryView(ContractModel):
 
 class FacilityProtectionView(ContractModel):
     score: str
-    category: Literal["strong", "adequate", "moderate", "weak", "severe"]
-    expected_recovery_category: Literal["high", "moderate", "limited", "low"]
+    category: Literal[
+        "strong", "adequate", "moderate", "weak", "severe", "not_applicable"
+    ]
+    expected_recovery_category: Literal[
+        "high", "moderate", "limited", "low", "not_applicable"
+    ]
+    status: Literal["available", "blocked", "not_applicable_no_supported_exposure"] = (
+        "available"
+    )
     coverage_requested: str = "0"
     coverage_recommended: str = "0"
     factors: dict[str, str]
@@ -678,6 +720,8 @@ class BorrowingBaseView(ContractModel):
     prior_liens: MoneyValue | None
     borrowing_base: MoneyValue | None
     availability: MoneyValue | None
+    commitment: MoneyValue | None = None
+    outstanding: MoneyValue | None = None
     excess_or_deficiency: MoneyValue | None
     binding_constraint: str
     policy_notice: str
@@ -697,6 +741,56 @@ class PricingView(ContractModel):
     commitment_fee_bps: int | None
     upfront_fee_bps: int | None
     disclaimer: str
+
+
+class RateDecisionView(ContractModel):
+    """Single underwritten rate used consistently by pricing, capacity, and stress."""
+
+    index_rate: str
+    floor_rate: str
+    shocked_index_rate: str
+    spread_bps: int
+    underwritten_rate: str
+    commitment_fee_bps: int
+    upfront_fee_bps: int
+    status: Literal["available", "blocked"]
+    explanation: str
+
+
+class DebtReconciliationView(ContractModel):
+    """Reconciles balance-sheet debt to instrument schedule debt on one basis."""
+
+    status: Literal["reconciled", "immaterial_difference", "blocked", "aggregate_mode"]
+    balance_sheet_gross_debt: MoneyValue
+    instrument_gross_debt: MoneyValue | None
+    scheduled_principal: MoneyValue | None
+    implied_interest: MoneyValue | None
+    reported_interest: MoneyValue
+    difference: MoneyValue | None
+    tolerance: MoneyValue
+    explanation: str
+    leverage_source: str
+    stress_source: str
+    maturity_source: str
+    aggregate_mode: bool = False
+
+
+class ResolvedFacilityMechanics(ContractModel):
+    """Canonical facility structure consumed by capacity, stress, and terms."""
+
+    facility_type: Literal["term_loan", "revolver", "asset_based"]
+    amortization_type: Literal["fully_amortizing", "partial", "bullet", "revolver"]
+    commitment: MoneyValue
+    initial_drawn: MoneyValue
+    bullet_percentage: str
+    amortization_years: int | None
+    maturity_years: int
+    availability_period_years: int | None
+    commitment_fee_bps: int
+    mandatory_prepayment: str
+    security_type: Literal["unsecured", "secured", "asset_based"]
+    status: Literal["available", "blocked"]
+    explanation: str
 
 
 class SolverResultView(ContractModel):
@@ -785,6 +879,12 @@ class ScenarioView(ContractModel):
     first_breach_year: int | None
     first_stress_event_year: int | None
     liquidity_exhaustion_year: int | None
+    maturity_test_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
+        "not_applicable"
+    )
+    maturity_test_reason: str = ""
+    balloon_amount: MoneyValue | None = None
+    exit_leverage: str | None = None
 
 
 class CovenantView(ContractModel):
@@ -862,6 +962,9 @@ class AnalysisResult(ContractModel):
     metrics: dict[str, RatioView]
     financial_spreading: FinancialSpreadingView
     adjustments: AdjustmentSummaryView
+    rate_decision: "RateDecisionView | None" = None
+    debt_reconciliation: "DebtReconciliationView | None" = None
+    facility_mechanics: "ResolvedFacilityMechanics | None" = None
     capacity: CapacityView
     facility_protection: FacilityProtectionView
     borrowing_base: BorrowingBaseView

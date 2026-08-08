@@ -104,8 +104,13 @@ def calculate_borrowing_base(
     )
     other = inputs.other_collateral
     other_eligible = sum(
-        value.amount_minor
-        for value in (other.equipment, other.real_estate, other.cash, other.other)
+        int((value.amount_minor * rate).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        for value, rate in (
+            (other.equipment, other.equipment_advance_rate),
+            (other.real_estate, other.real_estate_advance_rate),
+            (other.cash, other.cash_advance_rate),
+            (other.other, other.other_advance_rate),
+        )
     )
     reserves = inputs.additional_reserves.amount_minor
     prior_liens = inputs.prior_liens.amount_minor
@@ -123,7 +128,14 @@ def calculate_borrowing_base(
         + other_eligible
     )
     reductions = ar_reductions + inventory_reductions
-    excess = final_base - case.request.amount.amount_minor
+    commitment_minor = case.request.amount.amount_minor
+    outstanding_minor = (
+        case.request.initial_drawn_amount.amount_minor
+        if case.request.initial_drawn_amount is not None
+        else 0
+    )
+    availability_minor = max(0, min(commitment_minor, final_base) - outstanding_minor)
+    excess = final_base - commitment_minor
     return BorrowingBaseView(
         applicable=True,
         status="calculated",
@@ -137,7 +149,9 @@ def calculate_borrowing_base(
         reserves=_money(reserves, template),
         prior_liens=_money(prior_liens, template),
         borrowing_base=_money(final_base, template),
-        availability=_money(final_base, template),
+        availability=_money(availability_minor, template),
+        commitment=_money(commitment_minor, template),
+        outstanding=_money(outstanding_minor, template),
         excess_or_deficiency=_money(excess, template),
         binding_constraint=(
             "borrowing_base"
@@ -154,13 +168,30 @@ def assess_facility(
     borrowing_base: BorrowingBaseView,
     approved_amount: MoneyValue | None = None,
 ) -> FacilityProtectionView:
-    request_minor = max(1, case.request.amount.amount_minor)
-    approved_minor = max(
-        1,
+    request_minor = case.request.amount.amount_minor
+    approved_minor = (
         approved_amount.amount_minor
         if approved_amount is not None
-        else case.request.amount.amount_minor,
+        else case.request.amount.amount_minor
     )
+    if request_minor <= 0 or approved_minor <= 0:
+        return FacilityProtectionView(
+            score="N/A",
+            category="not_applicable",
+            expected_recovery_category="not_applicable",
+            status="not_applicable_no_supported_exposure",
+            coverage_requested="N/A",
+            coverage_recommended="N/A",
+            factors={},
+            main_protections=[],
+            main_structural_weaknesses=[
+                "No supported exposure; facility protection is not meaningful."
+            ],
+            required_improvements=[
+                "Resolve capacity or facility inputs before pricing terms."
+            ],
+            documentation_requirements=[],
+        )
     collateral_minor = (
         borrowing_base.borrowing_base.amount_minor
         if borrowing_base.borrowing_base is not None

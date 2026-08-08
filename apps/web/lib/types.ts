@@ -221,14 +221,17 @@ export type Analysis = {
     ltm_status: "available" | "blocked" | "legacy_snapshot";
     reconciliation_warnings: string[];
     trend: Record<string, Array<string | null>>;
-    resolved_snapshot: {
+  resolved_snapshot: {
       resolver_version: string;
       snapshot_hash: string;
       basis: "reported_ltm" | "derived_ltm" | "fiscal_year" | "legacy_snapshot";
       period_id: string;
       period_end: string | null;
-      source_period_ids: string[];
-      source_lineage: Record<string, string[]>;
+    source_period_ids: string[];
+    flow_source_period_ids: string[];
+    balance_sheet_source_period_id: string | null;
+    source_lineage: Record<string, string[]>;
+    source_authority: Record<string, string>;
       financials: Record<string, Money | string>;
       reconciliation_status: "pass" | "warning" | "blocked";
       warnings: string[];
@@ -247,6 +250,8 @@ export type Analysis = {
     leverage_after: string | null;
     dscr_before: string | null;
     dscr_after: string | null;
+    approved_ebit?: Money | null;
+    approved_cfads_impact?: Money | null;
   };
   capacity: {
     status: "available" | "blocked";
@@ -284,6 +289,7 @@ export type Analysis = {
     score: string;
     category: string;
     expected_recovery_category: string;
+    status?: string;
     coverage_requested: string;
     coverage_recommended: string;
     factors: Record<string, string>;
@@ -306,6 +312,8 @@ export type Analysis = {
     prior_liens: Money | null;
     borrowing_base: Money | null;
     availability: Money | null;
+    commitment?: Money | null;
+    outstanding?: Money | null;
     excess_or_deficiency: Money | null;
     binding_constraint: string;
     policy_notice: string;
@@ -325,12 +333,57 @@ export type Analysis = {
     upfront_fee_bps: number | null;
     disclaimer: string;
   };
+  rate_decision?: {
+    index_rate: string;
+    floor_rate: string;
+    shocked_index_rate: string;
+    spread_bps: number;
+    underwritten_rate: string;
+    commitment_fee_bps: number;
+    upfront_fee_bps: number;
+    status: "available" | "blocked";
+    explanation: string;
+  } | null;
+  debt_reconciliation?: {
+    status: string;
+    balance_sheet_gross_debt: Money;
+    instrument_gross_debt: Money | null;
+    scheduled_principal: Money | null;
+    implied_interest: Money | null;
+    reported_interest: Money;
+    difference: Money | null;
+    tolerance: Money;
+    explanation: string;
+    leverage_source: string;
+    stress_source: string;
+    maturity_source: string;
+    aggregate_mode: boolean;
+  } | null;
+  facility_mechanics?: {
+    facility_type: string;
+    amortization_type: string;
+    commitment: Money;
+    initial_drawn: Money;
+    bullet_percentage: string;
+    amortization_years: number | null;
+    maturity_years: number;
+    availability_period_years: number | null;
+    commitment_fee_bps: number;
+    mandatory_prepayment: string;
+    security_type: string;
+    status: string;
+    explanation: string;
+  } | null;
   scenarios: Array<{
     name: "base" | "downside" | "severe";
     years: ScenarioYear[];
     first_breach_year: number | null;
     first_stress_event_year: number | null;
     liquidity_exhaustion_year: number | null;
+    maturity_test_status?: "pass" | "breach" | "not_applicable" | "blocked";
+    maturity_test_reason?: string;
+    balloon_amount?: Money | null;
+    exit_leverage?: string | null;
   }>;
   covenants: Array<{
     name: string;

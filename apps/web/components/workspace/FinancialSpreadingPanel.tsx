@@ -108,6 +108,17 @@ export function FinancialSpreadingPanel({
           </strong>
         </div>
       </div>
+      {spreading.resolved_snapshot && (
+        <div className="source-lineage-note">
+          <strong>{zh ? "權威來源" : "Authoritative source"}</strong>
+          <span>
+            {zh
+              ? `流量：${spreading.resolved_snapshot.flow_source_period_ids.join("、") || "舊版快照"}；資產負債表：${spreading.resolved_snapshot.balance_sheet_source_period_id ?? "舊版快照"}`
+              : `Flows: ${spreading.resolved_snapshot.flow_source_period_ids.join(", ") || "legacy snapshot"}; balance sheet: ${spreading.resolved_snapshot.balance_sheet_source_period_id ?? "legacy snapshot"}`}
+          </span>
+          <code>{spreading.resolved_snapshot.snapshot_hash.slice(0, 16)}</code>
+        </div>
+      )}
       {spreading.reconciliation_warnings.length > 0 && (
         <div className="reconciliation-warning">
           <CircleAlert size={18} />
