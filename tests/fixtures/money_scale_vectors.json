@@ -1,0 +1,32 @@
+[
+  {
+    "scale": "whole",
+    "input": "100.00",
+    "expected_amount_minor": 10000,
+    "expected_display": "100.00"
+  },
+  {
+    "scale": "thousands",
+    "input": "100.01",
+    "expected_amount_minor": 10001000,
+    "expected_display": "100.01"
+  },
+  {
+    "scale": "millions",
+    "input": "100.00",
+    "expected_amount_minor": 10000000000,
+    "expected_display": "100.00"
+  },
+  {
+    "scale": "millions",
+    "input": "0.00010001",
+    "expected_amount_minor": 10001,
+    "expected_display": "0.00010001"
+  },
+  {
+    "scale": "millions",
+    "input": "-0.00010001",
+    "expected_amount_minor": -10001,
+    "expected_display": "-0.00010001"
+  }
+]

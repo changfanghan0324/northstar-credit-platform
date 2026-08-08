@@ -1,17 +1,31 @@
 # Northstar current release status
 
-Status: **Portfolio Demo Mode release — verified for synthetic educational use**
+Status: **Portfolio Demo Mode release — v6 hardening in progress**
 
 This is the single current release truth. Historical audits and debate logs remain in the repository for traceability but do not override this page.
 
-The next, not-yet-implemented hardening specification is [Northstar v6 — Final Credit Model Consistency](prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md). It is a future work specification, not a claim that the current Portfolio Demo Mode release is v6-complete.
+The [Northstar v6 — Final Credit Model Consistency](prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
+specification is being executed as eight independently tested and committed
+phases. v6-01 is production-verified; the product is not v6-complete until
+v6-02 through v6-08 are finished.
 
 ## Release coordinates
 
-- Release commit: `ea797c1b6d59934a1f7b8b8e6405c1aeac2aeae6`
+- v5 baseline release commit: `ea797c1b6d59934a1f7b8b8e6405c1aeac2aeae6`
 - Production URL: https://northstar-credit-platform.vercel.app
 - Vercel deployment: `dpl_HG6b9t5t4aJRxsPEzrgJcc6dtQ2k` (READY; production alias verified)
 - Product mode: Portfolio Demo Mode (synthetic, anonymous, temporary seven-day cases)
+
+## v6 phase progress
+
+- **v6-01 — Money scale contract:** production-verified in Vercel deployment
+  `dpl_4R2hw9cS9QrzuEu5SuM4Tn6th5vq` (READY; production alias verified).
+  The exact Git commit is `v6-01-fix-money-scale-contract`.
+- Claude Opus 5 High initial challenge:
+  `606598e7-85f1-4dbe-9add-33b244ee57ac` (resolved before deploy).
+- Claude Opus 5 High re-challenge:
+  `728dc361-bd7d-4459-b287-00894cb99a96` (PASS; no v6-01 production gate).
+- **v6-02 through v6-08:** pending; no completion claim is made for those phases.
 
 ## Verification at release authoring
 

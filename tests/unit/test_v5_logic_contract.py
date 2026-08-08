@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 from northstar_credit_app import analyze_case, resolve_underwriting_financials
 from northstar_credit_app.demo import load_demo_case
@@ -17,6 +19,26 @@ from northstar_policy import load_policy
 
 def money(value: int) -> MoneyValue:
     return MoneyValue(amount_minor=value, currency="USD")
+
+
+def test_money_scale_golden_vectors_are_canonical() -> None:
+    vectors = json.loads(Path("tests/fixtures/money_scale_vectors.json").read_text())
+    digits = {"whole": 0, "thousands": 3, "millions": 6}
+    for vector in vectors:
+        whole, _, fraction = vector["input"].partition(".")
+        sign = -1 if whole.startswith("-") else 1
+        unsigned = whole.lstrip("-").replace(",", "")
+        exponent = 2 + digits[vector["scale"]]
+        actual = sign * int(unsigned + fraction) * 10 ** (exponent - len(fraction))
+        assert actual == vector["expected_amount_minor"]
+
+
+def test_money_value_rejects_unsafe_json_integer() -> None:
+    try:
+        MoneyValue(amount_minor=9_007_199_254_740_992, currency="USD")
+    except ValueError:
+        return
+    raise AssertionError("unsafe amount_minor must be rejected")
 
 
 def test_display_scale_is_metadata_only_and_does_not_double_scale() -> None:

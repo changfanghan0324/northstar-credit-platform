@@ -3,7 +3,7 @@
 import { Copy, Download, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { formatMoneyInput, parseMoneyInput } from "@/lib/money";
+import { formatMoneyAtScale, normalizeMoneyInput } from "@/lib/money";
 import type { CaseInput, FinancialPeriod, Money } from "@/lib/types";
 
 type Spread = NonNullable<CaseInput["financial_spread"]>;
@@ -108,16 +108,6 @@ function scaleLabel(scale: FinancialPeriod["scale"], zh: boolean): string {
   if (!zh) return scale;
   return { whole: "元", thousands: "千", millions: "百萬" }[scale];
 }
-function scaleFactor(scale: FinancialPeriod["scale"]): number {
-  return scale === "millions" ? 1_000_000 : scale === "thousands" ? 1_000 : 1;
-}
-function displayMoney(value: Money, scale: FinancialPeriod["scale"]): string {
-  const factor = scaleFactor(scale);
-  return formatMoneyInput({
-    ...value,
-    amount_minor: value.amount_minor / factor,
-  });
-}
 
 function blankPeriod(
   kind: "historical_fiscal_year" | "quarter" | "forecast",
@@ -212,19 +202,15 @@ export function FinancialSpreadEditor({
     field: string,
     text: string,
   ) {
-    const parsed = parseMoneyInput(text, 2, language);
+    const period = spread.periods.find((item) => item.id === id);
+    const parsed = normalizeMoneyInput(
+      text,
+      period?.scale ?? "whole",
+      2,
+      language,
+    );
     if (!parsed.ok) {
       setError(parsed.message);
-      return;
-    }
-    const period = spread.periods.find((item) => item.id === id);
-    const scaled = parsed.amountMinor * scaleFactor(period?.scale ?? "whole");
-    if (!Number.isSafeInteger(scaled)) {
-      setError(
-        zh
-          ? "依所選單位換算後，金額超過安全上限。"
-          : "The scaled amount exceeds the exact supported range.",
-      );
       return;
     }
     setError("");
@@ -236,7 +222,7 @@ export function FinancialSpreadEditor({
               [statement]: {
                 ...item[statement],
                 [field]: {
-                  amount_minor: scaled,
+                  amount_minor: parsed.amountMinor,
                   currency: item.currency,
                   minor_unit_exponent: 2,
                 },
@@ -317,14 +303,16 @@ export function FinancialSpreadEditor({
     const next = structuredClone(spread.periods);
     rows.slice(0, next.length).forEach((row, rowIndex) =>
       row.slice(0, pasteFields.length).forEach((cell, columnIndex) => {
-        const parsed = parseMoneyInput(cell, 2, language);
-        const scaled = parsed.ok
-          ? parsed.amountMinor * scaleFactor(next[rowIndex].scale)
-          : 0;
-        if (parsed.ok && Number.isSafeInteger(scaled)) {
+        const parsed = normalizeMoneyInput(
+          cell,
+          next[rowIndex].scale,
+          2,
+          language,
+        );
+        if (parsed.ok) {
           const [statement, field] = pasteFields[columnIndex];
           next[rowIndex][statement][field] = {
-            amount_minor: scaled,
+            amount_minor: parsed.amountMinor,
             currency: next[rowIndex].currency,
             minor_unit_exponent: 2,
           };
@@ -544,7 +532,7 @@ export function FinancialSpreadEditor({
                               inputMode="decimal"
                               value={
                                 current
-                                  ? displayMoney(current, period.scale)
+                                  ? formatMoneyAtScale(current, period.scale)
                                   : ""
                               }
                               placeholder="—"

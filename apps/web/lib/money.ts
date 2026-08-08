@@ -11,6 +11,17 @@ export type MoneyParseResult =
   | { ok: true; amountMinor: number }
   | { ok: false; code: MoneyParseErrorCode; message: string };
 
+/**
+ * A FinancialPeriod scale is a display/import unit, never a second Money
+ * exponent.  The editor parses directly into actual minor units using the
+ * selected display scale.
+ */
+export type MoneyDisplayScale = "whole" | "thousands" | "millions";
+
+export function displayScaleDigits(scale: MoneyDisplayScale): number {
+  return scale === "millions" ? 6 : scale === "thousands" ? 3 : 0;
+}
+
 function message(code: MoneyParseErrorCode, zh: boolean): string {
   const copy = zh
     ? {
@@ -39,7 +50,9 @@ export function parseMoneyInput(
   language: "en" | "zh-TW" = "en",
 ): MoneyParseResult {
   const zh = language === "zh-TW";
-  if (!Number.isInteger(exponent) || exponent < 0 || exponent > 6) {
+  // USD cents displayed in millions require eight decimal places to preserve
+  // an arbitrary cent value through an edit/save/reload round trip.
+  if (!Number.isInteger(exponent) || exponent < 0 || exponent > 8) {
     return {
       ok: false,
       code: "invalid_scale",
@@ -97,6 +110,28 @@ export function parseMoneyInput(
   return { ok: true, amountMinor: Number(signed) };
 }
 
+/**
+ * Normalize a value entered in a period's display unit into canonical
+ * `Money.amount_minor` units exactly once.
+ *
+ * For USD, `100.00` means 100 dollars at `whole`, 100 thousand dollars at
+ * `thousands`, and 100 million dollars at `millions`.  Parsing at the
+ * expanded exponent avoids lossy Number multiplication and also preserves
+ * values such as 0.00010001 million (= $100.01).
+ */
+export function normalizeMoneyInput(
+  input: string,
+  displayScale: MoneyDisplayScale,
+  baseExponent = 2,
+  language: "en" | "zh-TW" = "en",
+): MoneyParseResult {
+  return parseMoneyInput(
+    input,
+    baseExponent + displayScaleDigits(displayScale),
+    language,
+  );
+}
+
 export function formatMoneyInput(value: Money): string {
   const minor = BigInt(value.amount_minor);
   const scale = 10n ** BigInt(value.minor_unit_exponent);
@@ -107,5 +142,34 @@ export function formatMoneyInput(value: Money): string {
   const fraction = (absolute % scale)
     .toString()
     .padStart(value.minor_unit_exponent, "0");
+  return `${negative ? "-" : ""}${whole}.${fraction}`;
+}
+
+/**
+ * Render canonical actual minor units in a period's display unit without
+ * converting through JavaScript Number arithmetic.
+ */
+export function formatMoneyAtScale(
+  value: Money,
+  displayScale: MoneyDisplayScale,
+): string {
+  const digits = displayScaleDigits(displayScale);
+  if (digits === 0) return formatMoneyInput(value);
+
+  const minor = BigInt(value.amount_minor);
+  const denominator = 10n ** BigInt(value.minor_unit_exponent + digits);
+  const negative = minor < 0n;
+  const absolute = negative ? -minor : minor;
+  const whole = absolute / denominator;
+  const minimumFractionDigits = value.minor_unit_exponent;
+  let fraction = (absolute % denominator)
+    .toString()
+    .padStart(value.minor_unit_exponent + digits, "0");
+  while (fraction.length > minimumFractionDigits && fraction.endsWith("0")) {
+    fraction = fraction.slice(0, -1);
+  }
+  if (minimumFractionDigits > 0 && fraction.length === 0) {
+    fraction = "0".repeat(minimumFractionDigits);
+  }
   return `${negative ? "-" : ""}${whole}.${fraction}`;
 }

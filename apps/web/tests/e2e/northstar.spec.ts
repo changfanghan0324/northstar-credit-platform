@@ -1,6 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import vectors from "../../../../tests/fixtures/money_scale_vectors.json";
+import {
+  formatMoneyAtScale,
+  normalizeMoneyInput,
+  type MoneyDisplayScale,
+} from "../../lib/money";
+
 async function assertNoSeriousA11yViolations(
   page: import("@playwright/test").Page,
 ) {
@@ -13,6 +20,35 @@ async function assertNoSeriousA11yViolations(
     ),
   ).toEqual([]);
 }
+
+test("money scale golden vectors stay canonical in TypeScript", () => {
+  for (const vector of vectors) {
+    const scale = vector.scale as MoneyDisplayScale;
+    const parsed = normalizeMoneyInput(vector.input, scale, 2);
+    expect(parsed).toEqual({
+      ok: true,
+      amountMinor: vector.expected_amount_minor,
+    });
+    expect(
+      formatMoneyAtScale(
+        {
+          amount_minor: vector.expected_amount_minor,
+          currency: "USD",
+          minor_unit_exponent: 2,
+        },
+        scale,
+      ),
+    ).toBe(vector.expected_display);
+  }
+
+  expect(normalizeMoneyInput("90071992.54740991", "millions", 2)).toEqual({
+    ok: true,
+    amountMinor: Number.MAX_SAFE_INTEGER,
+  });
+  expect(normalizeMoneyInput("90071992.54740992", "millions", 2)).toMatchObject(
+    { ok: false, code: "unsafe_amount" },
+  );
+});
 
 test("English and Traditional Chinese home pages are accessible", async ({
   page,
@@ -66,6 +102,60 @@ test("demo lifecycle exposes professional workspace pages and both modes", async
   await expect(page.locator(".line-chart")).toHaveCount(2);
   await page.getByText("Show all six reverse-stress solvers").click();
   await expect(page.locator(".solver-grid article")).toHaveCount(6);
+});
+
+test("analyst money scales preserve canonical cents across entry and paste", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "The scale contract flow is covered on desktop only.");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open workspace" }).first().click();
+  await page.getByRole("link", { name: /Inputs/ }).click();
+  await page.getByRole("button", { name: "Analyst" }).click();
+  await page.getByRole("button", { name: "Add 3-year history" }).click();
+  await page
+    .locator("details.statement-table")
+    .first()
+    .locator("summary")
+    .click();
+
+  const periods = page.locator(".period-cards fieldset");
+  const directPeriod = periods.nth(0);
+  const pastedPeriod = periods.nth(1);
+  const revenues = page.locator('input[aria-label$="revenue"]');
+  const directRevenue = revenues.nth(0);
+  const pastedRevenue = revenues.nth(1);
+
+  await directPeriod.getByLabel("Scale").selectOption("millions");
+  await directRevenue.fill("100.00");
+  await expect(directRevenue).toHaveValue("100.00");
+  await directPeriod.getByLabel("Scale").selectOption("whole");
+  await expect(directRevenue).toHaveValue("100000000.00");
+
+  await directPeriod.getByLabel("Scale").selectOption("thousands");
+  await directRevenue.fill("100.01");
+  await directPeriod.getByLabel("Scale").selectOption("whole");
+  const directCanonicalDisplay = await directRevenue.inputValue();
+  await directPeriod.getByLabel("Scale").selectOption("millions");
+  await expect(directRevenue).toHaveValue("0.10001");
+  await directPeriod.getByLabel("Scale").selectOption("whole");
+  await expect(directRevenue).toHaveValue(directCanonicalDisplay);
+
+  await pastedPeriod.getByLabel("Scale").selectOption("thousands");
+  await page.locator("details.bulk-paste").locator("summary").click();
+  await page
+    .locator("details.bulk-paste textarea")
+    .fill("0\t0\t0\t0\t0\t0\t0\t0\n100.01\t0\t0\t0\t0\t0\t0\t0");
+  await page.getByRole("button", { name: "Apply pasted data" }).click();
+  await pastedPeriod.getByLabel("Scale").selectOption("whole");
+  await expect(pastedRevenue).toHaveValue(directCanonicalDisplay);
+
+  await directPeriod.getByLabel("Scale").selectOption("millions");
+  await directRevenue.fill("90071992.54740992");
+  await expect(page.locator("p.error[role=alert]")).toContainText(
+    "exact range supported",
+  );
 });
 
 test("keyboard skip link, glossary dialog, mobile navigation, and localized 404 work", async ({
