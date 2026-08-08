@@ -29,6 +29,19 @@ The remaining items are deliberately not marked complete: governed overrides and
 metric-level severity, restatement/entity/scope controls, full borrowing-base
 availability policy, provenance E2E coverage, and the final public redeploy/re-audit.
 
+## Final public deployment evidence
+
+- GitHub `main`: commit `2020c8e` (includes the V4 implementation commit `c7a87d9`)
+- Vercel production deployment: `dpl_HThbHYhoF5xRTEXK9CFZzo4Fubmk`
+- Ready state: `READY`; production alias: <https://northstar-credit-platform.vercel.app>
+- Public checks: `/`, `/zh-TW`, `/health`, `/runtime`, `/demo-cases`, all HTTP 200
+- Demo workflow: template GET 200, demo open 200, analyze 200, English detailed PDF 200
+  (5 pages), Traditional Chinese detailed PDF 200
+- Vercel runtime log sample: all final deployment requests above completed without
+  error. An earlier deployment was intentionally not retained after its log exposed
+  the missing `reportlab` dependency; `pyproject.toml` was corrected before the final
+  production deployment.
+
 ## Current-state gap matrix
 
 | Area | Current behavior | Expected behavior | Impact | Severity | Reproduction | Source files | Planned proof |
