@@ -152,8 +152,15 @@ def assess_facility(
     case: CaseInput,
     policy: CreditPolicy,
     borrowing_base: BorrowingBaseView,
+    approved_amount: MoneyValue | None = None,
 ) -> FacilityProtectionView:
     request_minor = max(1, case.request.amount.amount_minor)
+    approved_minor = max(
+        1,
+        approved_amount.amount_minor
+        if approved_amount is not None
+        else case.request.amount.amount_minor,
+    )
     collateral_minor = (
         borrowing_base.borrowing_base.amount_minor
         if borrowing_base.borrowing_base is not None
@@ -161,13 +168,26 @@ def assess_facility(
         if case.request.security_type != "unsecured"
         else 0
     )
-    coverage = Decimal(collateral_minor) / Decimal(request_minor)
+    requested_coverage = Decimal(collateral_minor) / Decimal(request_minor)
+    approved_coverage = Decimal(collateral_minor) / Decimal(approved_minor)
+    # Facility protection is a structure assessment: once capacity has reduced the
+    # approved amount, the recommended structure is the primary denominator. The
+    # requested coverage remains visible for transparency.
+    coverage = approved_coverage
     factors = {
-        "seniority": Decimal(90),
+        "seniority": (
+            Decimal(90)
+            if case.request.security_type in {"secured", "asset_based"}
+            else Decimal(40)
+        ),
         "collateral": min(Decimal(100), coverage * Decimal(80)),
-        "guarantee": Decimal(75)
-        if case.request.guarantee.lower() != "none"
-        else Decimal(40),
+        "guarantee": (
+            Decimal(85)
+            if "full" in case.request.guarantee.lower()
+            else Decimal(65)
+            if case.request.guarantee.lower() not in {"none", "limited"}
+            else Decimal(40)
+        ),
         "amortization": Decimal(85)
         if (case.request.amortization_years or case.request.maturity_years)
         < case.request.maturity_years
@@ -228,6 +248,8 @@ def assess_facility(
         score=str(score.quantize(Decimal("0.01"))),
         category=category,  # type: ignore[arg-type]
         expected_recovery_category=recovery,  # type: ignore[arg-type]
+        coverage_requested=str(requested_coverage.quantize(Decimal("0.0001"))),
+        coverage_recommended=str(approved_coverage.quantize(Decimal("0.0001"))),
         factors={
             key: str(value.quantize(Decimal("0.01"))) for key, value in factors.items()
         },
@@ -248,7 +270,25 @@ def assess_facility(
 def calculate_pricing(
     case: CaseInput, policy: CreditPolicy, scorecard: ScorecardView
 ) -> PricingView:
-    grade = scorecard.grade or 10
+    if scorecard.grade is None:
+        return PricingView(
+            status="blocked",
+            reference_base_rate=str(
+                case.pricing.reference_base_rate.quantize(Decimal("0.0001"))
+            ),
+            risk_grade_spread_bps=0,
+            tenor_adjustment_bps=0,
+            security_adjustment_bps=0,
+            amortization_adjustment_bps=0,
+            covenant_adjustment_bps=0,
+            concentration_adjustment_bps=0,
+            relationship_adjustment_bps=case.pricing.relationship_adjustment_bps,
+            indicative_all_in_rate=None,
+            commitment_fee_bps=None,
+            upfront_fee_bps=None,
+            disclaimer="Pricing is blocked until a valid obligor grade and canonical financial source are available.",
+        )
+    grade = scorecard.grade
     grade_spread = policy.pricing_grade_spreads_bps[grade]
     tenor_key = (
         "short"
@@ -281,6 +321,7 @@ def calculate_pricing(
     )
     all_in = case.pricing.reference_base_rate + Decimal(total_bps) / Decimal(10000)
     return PricingView(
+        status="available",
         reference_base_rate=str(
             case.pricing.reference_base_rate.quantize(Decimal("0.0001"))
         ),

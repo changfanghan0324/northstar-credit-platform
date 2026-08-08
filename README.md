@@ -26,6 +26,10 @@ transparent indicative pricing, proposed terms, and localized credit-memo PDFs.
   explicit LTM methodology.
 - Normalization adjustments and qualitative business-risk factors require rationale,
   evidence, source, and review state before they can support a final grade.
+- The canonical financial resolver records one immutable reported/derived LTM snapshot;
+  unresolved non-empty spreads block final grading and pricing instead of silently
+  reusing stale legacy values. Term, bullet, partial-amortization, and revolver
+  mechanics are represented explicitly in stress scenarios.
 
 All displayed borrower data is synthetic. Northstar is an educational demonstration,
 not a bank, rating agency, credit opinion, or lending commitment.
@@ -107,6 +111,9 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [Final UX audit](docs/audits/final-ux-audit.md)
 - [Production deployment verification](docs/audits/final-deployment-verification.md)
 - [Final Claude Opus 5 High review](docs/collaboration/final-review-claude-opus-5.md)
+- [v4 independent audit](docs/audits/final-independent-audit-v4.md)
+- [v4 implementation task board](docs/implementation-task-board-v4.md)
+- [v4 Claude Opus 5 High challenge](docs/collaboration/v4-claude-opus-5-review.md)
 
 The independent collaboration record is repository evidence only; it is deliberately
 not used as a product-interface marketing claim.

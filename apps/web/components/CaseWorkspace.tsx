@@ -541,10 +541,10 @@ function zhMemoSections(a: Analysis): Record<string, string[]> {
       `分數 ${a.scorecard.score ?? "已阻擋"}；評等 ${a.scorecard.grade ?? "已阻擋"}；資料信心 ${a.scorecard.confidence_score}/100。設施保障不會改變債務人評等。`,
     ],
     facility_protection: [
-      `設施保障分數 ${a.facility_protection.score}；類別 ${uiStatus(a.facility_protection.category, true)}；預期回收類別 ${uiStatus(a.facility_protection.expected_recovery_category, true)}。`,
+      `設施保障分數 ${a.facility_protection.score}；類別 ${uiStatus(a.facility_protection.category, true)}；預期回收類別 ${uiStatus(a.facility_protection.expected_recovery_category, true)}；申請／建議覆蓋率 ${a.facility_protection.coverage_requested}x / ${a.facility_protection.coverage_recommended}x。`,
     ],
     debt_capacity: [
-      `申請 ${amount(a.capacity.requested)}；建議 ${amount(a.capacity.recommended)}；約束條件：${a.capacity.binding_constraints.map((item) => bindingLabel(item, true)).join("、")}。`,
+      `容量狀態 ${a.capacity.status === "blocked" ? "已阻擋" : "可用"}；申請 ${amount(a.capacity.requested)}；建議 ${amount(a.capacity.recommended)}；約束條件：${a.capacity.binding_constraints.map((item) => bindingLabel(item, true)).join("、")}。`,
     ],
     base_case: [`首次財務契約違約：${breach(base.first_breach_year)}。`],
     downside_case: [
@@ -564,7 +564,9 @@ function zhMemoSections(a: Analysis): Record<string, string[]> {
           : "此額度不適用借款基礎。",
     ],
     indicative_pricing: [
-      `參考基準利率 ${(Number(a.pricing.reference_base_rate) * 100).toFixed(2)}%；風險利差 ${a.pricing.risk_grade_spread_bps} bps；示意全包利率 ${(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%。`,
+      a.pricing.indicative_all_in_rate
+        ? `參考基準利率 ${(Number(a.pricing.reference_base_rate) * 100).toFixed(2)}%；風險利差 ${a.pricing.risk_grade_spread_bps} bps；示意全包利率 ${(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%。`
+        : "定價已阻擋，待有效債務人評等與財務期間來源。",
       "僅供教育用途，不代表即時市場報價或銀行承諾。",
     ],
     covenants: [
@@ -1755,7 +1757,11 @@ function Decision({
           <div>
             <dt>{zh ? "示意全包利率" : "Indicative all-in rate"}</dt>
             <dd>
-              {(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%
+              {a.pricing.indicative_all_in_rate
+                ? `${(Number(a.pricing.indicative_all_in_rate) * 100).toFixed(2)}%`
+                : zh
+                  ? "已阻擋"
+                  : "Blocked"}
             </dd>
           </div>
           <div>

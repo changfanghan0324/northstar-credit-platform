@@ -19,6 +19,7 @@ Northstar 是一套完整的教育用途企業授信工作區。它會把標準�
 - 模式：引導與分析師模式是同一組輸入與計算輸出的兩種漸進式呈現
 - 分析師輸入支援多期損益表、資產負債表、現金流量表、CSV 範本、Excel 貼上、期間複製／移除、調節與明確 LTM 方法
 - 正常化調整與定性營運風險因素必須有理由、證據、來源及覆核狀態，才能支持最終評等
+- 財務解析器會保留一個不可變的已報告／推導 LTM 財務快照；非空但無法驗證的多期資料會阻擋最終評等與定價，不會靜默沿用過期舊數字。壓力情境明確區分定期攤還、到期還本、部分攤還與循環額度機制。
 
 所有借款人資料均為合成資料。Northstar 是教育與作品集展示，不是銀行、評等
 機構、信用意見或放款承諾。
@@ -96,5 +97,8 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 - [最終 UX 稽核](docs/audits/final-ux-audit.md)
 - [正式環境部署驗證](docs/audits/final-deployment-verification.md)
 - [最終 Claude Opus 5 High 審查](docs/collaboration/final-review-claude-opus-5.md)
+- [v4 獨立稽核](docs/audits/final-independent-audit-v4.md)
+- [v4 修正任務板](docs/implementation-task-board-v4.md)
+- [v4 Claude Opus 5 High 挑戰紀錄](docs/collaboration/v4-claude-opus-5-review.md)
 
 跨模型協作紀錄僅作為 repository 證據，不會在產品介面中當作行銷宣稱。

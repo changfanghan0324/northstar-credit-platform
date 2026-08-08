@@ -49,8 +49,35 @@ class LoanRequestInput(ContractModel):
     base_rate: Decimal = Field(default=Decimal("0"), ge=0, le=1)
     rate_floor: Decimal = Field(default=Decimal("0"), ge=0, le=1)
     amortization_years: int | None = Field(default=None, gt=0, le=30)
+    amortization_type: (
+        Literal["fully_amortizing", "partial", "bullet", "revolver"] | None
+    ) = None
+    bullet_percentage: Decimal = Field(default=Decimal("1"), ge=0, le=1)
+    initial_drawn_amount: MoneyValue | None = None
+    commitment_fee_bps: int = Field(default=0, ge=0, le=2_000)
+    upfront_fee_bps: int = Field(default=0, ge=0, le=2_000)
+    availability_period_years: int | None = Field(default=None, gt=0, le=30)
+    mandatory_prepayment: Decimal = Field(default=Decimal("0"), ge=0, le=1)
     guarantee: str = "None"
     primary_repayment_source: str = "Operating cash flow"
+
+    @model_validator(mode="after")
+    def validate_mechanics(self) -> LoanRequestInput:
+        if self.initial_drawn_amount is not None:
+            if self.initial_drawn_amount.currency != self.amount.currency:
+                raise ValueError("initial drawn amount must use the facility currency")
+            if self.initial_drawn_amount.amount_minor > self.amount.amount_minor:
+                raise ValueError("initial drawn amount cannot exceed commitment amount")
+        if self.facility_type == "revolver" and self.amortization_type not in {
+            None,
+            "revolver",
+        }:
+            raise ValueError(
+                "revolver facilities require revolver amortization mechanics"
+            )
+        if self.amortization_type == "bullet" and self.bullet_percentage <= 0:
+            raise ValueError("bullet facilities require a positive bullet percentage")
+        return self
 
 
 class DebtInstrumentInput(ContractModel):
@@ -128,6 +155,17 @@ class FinancialPeriodInput(ContractModel):
     source_reference: str
     currency: str = "USD"
     scale: Literal["whole", "thousands", "millions"] = "whole"
+    flow_type: Literal["discrete", "cumulative", "point_in_time"] = "discrete"
+    entity_scope: str = "borrower_consolidated"
+    accounting_basis: Literal["gaap", "ifrs", "tax", "management", "unknown"] = (
+        "management"
+    )
+    fiscal_calendar: Literal["calendar", "52_week", "53_week", "custom"] = "calendar"
+    mapping_version: str = "default"
+    restated: bool = False
+    pro_forma: bool = False
+    filing_date: date | None = None
+    amendment_flag: bool = False
     income_statement: IncomeStatementPeriodInput = Field(
         default_factory=IncomeStatementPeriodInput
     )
@@ -142,6 +180,26 @@ class FinancialPeriodInput(ContractModel):
             raise ValueError("financial period end_date must not precede start_date")
         if not self.source_reference.strip():
             raise ValueError("financial period source_reference is required")
+        if self.period_type == "quarter" and self.fiscal_quarter is None:
+            raise ValueError("quarter periods require fiscal_quarter metadata")
+        if (
+            self.period_type in {"historical_fiscal_year", "quarter", "ltm"}
+            and self.flow_type == "cumulative"
+        ):
+            raise ValueError(
+                "annual, quarter, and reported LTM periods must use discrete flow_type"
+            )
+        if (
+            self.period_type in {"ytd", "forecast"}
+            and self.flow_type == "point_in_time"
+        ):
+            raise ValueError(
+                "YTD and forecast periods cannot use point_in_time flow_type"
+            )
+        if self.period_type == "forecast" and self.source_type != "forecast":
+            raise ValueError("forecast periods require source_type=forecast")
+        if self.period_type != "forecast" and self.source_type == "forecast":
+            raise ValueError("forecast source_type requires period_type=forecast")
         return self
 
 
@@ -161,13 +219,36 @@ class FinancialSpreadInput(ContractModel):
         ids = [period.id for period in self.periods]
         if len(ids) != len(set(ids)):
             raise ValueError("financial period ids must be unique")
+        keyed: dict[tuple[str, int, int | None], list[FinancialPeriodInput]] = {}
+        for period in self.periods:
+            if period.period_type in {"historical_fiscal_year", "quarter", "ytd"}:
+                key = (period.period_type, period.fiscal_year, period.fiscal_quarter)
+                keyed.setdefault(key, []).append(period)
+        if any(
+            len(items) > 1
+            and not any(item.restated or item.amendment_flag for item in items)
+            for items in keyed.values()
+        ):
+            raise ValueError("financial periods must not duplicate fiscal metadata")
         quarters = [
             period for period in self.periods if period.period_type == "quarter"
         ]
         for index, first in enumerate(quarters):
             for second in quarters[index + 1 :]:
+                same_key = (
+                    first.fiscal_year == second.fiscal_year
+                    and first.fiscal_quarter == second.fiscal_quarter
+                )
                 if max(first.start_date, second.start_date) <= min(
                     first.end_date, second.end_date
+                ) and not (
+                    same_key
+                    and (
+                        first.restated
+                        or second.restated
+                        or first.amendment_flag
+                        or second.amendment_flag
+                    )
                 ):
                     raise ValueError("financial quarter periods must not overlap")
         return self
@@ -206,10 +287,29 @@ class NormalizationAdjustmentInput(ContractModel):
 
     @model_validator(mode="after")
     def validate_support(self) -> NormalizationAdjustmentInput:
+        if self.amount.amount_minor < 0:
+            raise ValueError(
+                "adjustment amount must be nonnegative; direction carries the sign"
+            )
         if not self.analyst_rationale.strip():
             raise ValueError("adjustment rationale is required")
-        if self.approval_status == "approved" and not self.supporting_evidence.strip():
-            raise ValueError("approved adjustment requires supporting evidence")
+        if not self.source_reference.strip():
+            raise ValueError("adjustment source reference is required")
+        impacts = (self.ebitda_impact, self.ebit_impact, self.cfads_impact)
+        if any(value.amount_minor < 0 for value in impacts):
+            raise ValueError(
+                "adjustment impacts must be nonnegative; direction carries the sign"
+            )
+        if self.approval_status == "approved" and (
+            not self.supporting_evidence.strip() or not self.reviewer
+        ):
+            raise ValueError(
+                "approved adjustment requires supporting evidence and reviewer"
+            )
+        if self.recurrence == "recurring" and self.approval_status == "approved":
+            raise ValueError(
+                "recurring adjustments cannot be approved as one-time add-backs"
+            )
         return self
 
 
@@ -228,6 +328,23 @@ class BusinessRiskEvidenceInput(ContractModel):
     def validate_evidence(self) -> BusinessRiskEvidenceInput:
         if not self.evidence.strip() or not self.analyst_rationale.strip():
             raise ValueError("business-risk evidence and rationale are required")
+        if not self.source.strip():
+            raise ValueError("business-risk evidence source is required")
+        expected_band = (
+            "strong"
+            if self.score >= 80
+            else "adequate"
+            if self.score >= 65
+            else "moderate_concern"
+            if self.score >= 50
+            else "weak"
+            if self.score >= 35
+            else "severe_concern"
+        )
+        if self.band != expected_band:
+            raise ValueError("business-risk score and band are inconsistent")
+        if self.override_status == "approved" and self.reviewer_status != "reviewed":
+            raise ValueError("approved business-risk override requires reviewed status")
         return self
 
 
@@ -241,6 +358,36 @@ class AccountsReceivableBaseInput(ContractModel):
     dilution_reserve: MoneyValue
     advance_rate: Decimal = Field(ge=0, le=1)
 
+    @model_validator(mode="after")
+    def validate_collateral(self) -> AccountsReceivableBaseInput:
+        values = {
+            "gross_receivables": self.gross_receivables,
+            "ineligible_receivables": self.ineligible_receivables,
+            "past_due_receivables": self.past_due_receivables,
+            "cross_aged_receivables": self.cross_aged_receivables,
+            "foreign_receivables": self.foreign_receivables,
+            "concentration_reserve": self.concentration_reserve,
+            "dilution_reserve": self.dilution_reserve,
+        }
+        if any(value.amount_minor < 0 for value in values.values()):
+            raise ValueError(
+                "borrowing-base receivables and reserves must be nonnegative"
+            )
+        deductions = sum(
+            values[name].amount_minor
+            for name in (
+                "ineligible_receivables",
+                "past_due_receivables",
+                "cross_aged_receivables",
+                "foreign_receivables",
+                "concentration_reserve",
+                "dilution_reserve",
+            )
+        )
+        if deductions > self.gross_receivables.amount_minor:
+            raise ValueError("receivable deductions cannot exceed gross receivables")
+        return self
+
 
 class InventoryBaseInput(ContractModel):
     gross_inventory: MoneyValue
@@ -249,12 +396,39 @@ class InventoryBaseInput(ContractModel):
     advance_rate: Decimal = Field(ge=0, le=1)
     inventory_cap: MoneyValue
 
+    @model_validator(mode="after")
+    def validate_collateral(self) -> InventoryBaseInput:
+        values = (
+            self.gross_inventory,
+            self.ineligible_inventory,
+            self.obsolete_inventory,
+            self.inventory_cap,
+        )
+        if any(value.amount_minor < 0 for value in values):
+            raise ValueError("borrowing-base inventory and cap must be nonnegative")
+        if (
+            self.ineligible_inventory.amount_minor
+            + self.obsolete_inventory.amount_minor
+            > self.gross_inventory.amount_minor
+        ):
+            raise ValueError("inventory deductions cannot exceed gross inventory")
+        return self
+
 
 class OtherCollateralInput(ContractModel):
     equipment: MoneyValue
     real_estate: MoneyValue
     cash: MoneyValue
     other: MoneyValue
+
+    @model_validator(mode="after")
+    def validate_collateral(self) -> OtherCollateralInput:
+        if any(
+            value.amount_minor < 0
+            for value in (self.equipment, self.real_estate, self.cash, self.other)
+        ):
+            raise ValueError("other collateral must be nonnegative")
+        return self
 
 
 class BorrowingBaseInput(ContractModel):
@@ -263,6 +437,17 @@ class BorrowingBaseInput(ContractModel):
     other_collateral: OtherCollateralInput
     additional_reserves: MoneyValue
     prior_liens: MoneyValue
+
+    @model_validator(mode="after")
+    def validate_reserves(self) -> BorrowingBaseInput:
+        if (
+            self.additional_reserves.amount_minor < 0
+            or self.prior_liens.amount_minor < 0
+        ):
+            raise ValueError(
+                "borrowing-base reserves and prior liens must be nonnegative"
+            )
+        return self
 
 
 class PricingInput(ContractModel):
@@ -411,6 +596,8 @@ class CapacityConstraintView(ContractModel):
 
 
 class CapacityView(ContractModel):
+    status: Literal["available", "blocked"] = "available"
+    underwritten_rate: str | None = None
     requested: MoneyValue
     leverage: MoneyValue
     dscr: MoneyValue
@@ -430,6 +617,25 @@ class FinancialSpreadingView(ContractModel):
     ltm_status: Literal["available", "blocked", "legacy_snapshot"]
     reconciliation_warnings: list[str]
     trend: dict[str, list[str | None]]
+    resolved_snapshot: ResolvedFinancialSnapshot | None = None
+    reconciliation_status: Literal["pass", "warning", "blocked"] = "pass"
+
+
+class ResolvedFinancialSnapshot(ContractModel):
+    """The immutable, explainable financial basis used by underwriting."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    resolver_version: str = "v4.1"
+    snapshot_hash: str
+    basis: Literal["reported_ltm", "derived_ltm", "fiscal_year", "legacy_snapshot"]
+    period_id: str
+    period_end: date | None
+    source_period_ids: list[str]
+    source_lineage: dict[str, list[str]]
+    financials: FinancialInput
+    reconciliation_status: Literal["pass", "warning", "blocked"]
+    warnings: list[str] = Field(default_factory=list)
+    blocking_issues: list[str] = Field(default_factory=list)
 
 
 class AdjustmentSummaryView(ContractModel):
@@ -449,6 +655,8 @@ class FacilityProtectionView(ContractModel):
     score: str
     category: Literal["strong", "adequate", "moderate", "weak", "severe"]
     expected_recovery_category: Literal["high", "moderate", "limited", "low"]
+    coverage_requested: str = "0"
+    coverage_recommended: str = "0"
     factors: dict[str, str]
     main_protections: list[str]
     main_structural_weaknesses: list[str]
@@ -476,6 +684,7 @@ class BorrowingBaseView(ContractModel):
 
 
 class PricingView(ContractModel):
+    status: Literal["available", "blocked"] = "available"
     reference_base_rate: str
     risk_grade_spread_bps: int
     tenor_adjustment_bps: int
@@ -484,7 +693,7 @@ class PricingView(ContractModel):
     covenant_adjustment_bps: int
     concentration_adjustment_bps: int
     relationship_adjustment_bps: int
-    indicative_all_in_rate: str
+    indicative_all_in_rate: str | None
     commitment_fee_bps: int | None
     upfront_fee_bps: int | None
     disclaimer: str

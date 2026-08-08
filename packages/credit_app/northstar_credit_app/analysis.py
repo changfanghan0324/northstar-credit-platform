@@ -50,7 +50,11 @@ from .models import (
     ScoreComponentView,
 )
 from .solvers import solve_reverse_stress
-from .spreading import analyze_spreading, summarize_adjustments
+from .spreading import (
+    analyze_spreading,
+    resolve_underwriting_financials,
+    summarize_adjustments,
+)
 
 ZERO = Decimal(0)
 ONE = Decimal(1)
@@ -389,6 +393,26 @@ def _annual_payment(principal_minor: int, rate: Decimal, years: int) -> Decimal:
         return principal * rate / (ONE - (ONE + rate) ** Decimal(-years))
 
 
+def _underwritten_rate(case: CaseInput, pricing_rate: Decimal | None = None) -> Decimal:
+    """Use one conservative all-in rate across capacity and stress scenarios."""
+    request_floor = max(
+        case.request.annual_rate,
+        case.request.base_rate + case.request.rate_floor,
+        case.pricing.reference_base_rate + case.request.rate_floor,
+    )
+    return max(request_floor, pricing_rate or ZERO)
+
+
+def _amortization_kind(case: CaseInput) -> str:
+    if case.request.amortization_type is not None:
+        return case.request.amortization_type
+    if case.request.facility_type == "revolver":
+        return "revolver"
+    return (
+        "fully_amortizing" if case.request.amortization_years is not None else "bullet"
+    )
+
+
 def _capacity(
     case: CaseInput,
     policy: CreditPolicy,
@@ -397,6 +421,8 @@ def _capacity(
     cash_available: Money,
     existing_service: Money,
     borrowing_base: BorrowingBaseView,
+    underwritten_rate: Decimal | None = None,
+    pricing_status: Literal["available", "blocked"] = "available",
 ) -> CapacityView:
     request = _money(case.request.amount)
     maximum_debt = Decimal(earnings.amount_minor) * policy.maximum_leverage
@@ -406,9 +432,20 @@ def _capacity(
     )
     max_service = Decimal(cash_available.amount_minor) / policy.minimum_dscr
     available_service = max(ZERO, max_service - Decimal(existing_service.amount_minor))
-    dscr_raw = _annuity_capacity(
-        available_service, case.request.annual_rate, case.request.maturity_years
-    )
+    effective_rate = underwritten_rate or _underwritten_rate(case)
+    amortization_kind = _amortization_kind(case)
+    if amortization_kind in {"bullet", "revolver"}:
+        dscr_raw = (
+            available_service / effective_rate
+            if effective_rate > ZERO
+            else available_service * Decimal(case.request.maturity_years)
+        )
+    else:
+        dscr_raw = _annuity_capacity(
+            available_service,
+            effective_rate,
+            case.request.amortization_years or case.request.maturity_years,
+        )
     dscr_minor = max(0, int(dscr_raw.quantize(Decimal(1), rounding=ROUND_HALF_UP)))
     collateral_applicable = case.request.security_type in {"secured", "asset_based"}
     candidates = {
@@ -467,6 +504,12 @@ def _capacity(
             )
         )
     return CapacityView(
+        status=pricing_status,
+        underwritten_rate=(
+            str(effective_rate.quantize(Decimal("0.0001")))
+            if pricing_status == "available"
+            else None
+        ),
         requested=_view(request),
         leverage=_view(_new_money(leverage_minor, request)),
         dscr=_view(_new_money(dscr_minor, request)),
@@ -491,6 +534,7 @@ def _scenario(
     debt: Money,
     starting_cash: Money,
     capacity: CapacityView,
+    underwritten_rate: Decimal | None = None,
 ) -> ScenarioView:
     assumptions = case.scenarios[name]  # type: ignore[index]
     revenue = _money(case.financials.revenue)
@@ -503,16 +547,28 @@ def _scenario(
         else ZERO
     )
     existing_debt = debt.amount_minor
-    new_debt = capacity.recommended.amount_minor
+    commitment = capacity.recommended.amount_minor
+    amortization_kind = _amortization_kind(case)
+    initial_draw = (
+        case.request.initial_drawn_amount.amount_minor
+        if case.request.initial_drawn_amount is not None
+        else 0
+    )
+    initial_draw = min(commitment, max(0, initial_draw))
+    new_debt = initial_draw if amortization_kind == "revolver" else commitment
     outstanding = existing_debt
     cash = starting_cash.amount_minor
-    revolver_available = case.financials.undrawn_revolver.amount_minor
+    revolver_available = (
+        max(0, commitment - initial_draw)
+        if amortization_kind == "revolver"
+        else case.financials.undrawn_revolver.amount_minor
+    )
     minimum_cash = case.financials.minimum_operating_cash.amount_minor
-    effective_new_rate = case.request.annual_rate
+    effective_new_rate = _underwritten_rate(case, underwritten_rate)
     if case.request.rate_type == "floating":
         effective_new_rate = max(
             case.request.rate_floor,
-            case.request.annual_rate + assumptions.rate_shock,
+            effective_new_rate + assumptions.rate_shock,
         )
     amortization_years = case.request.amortization_years or case.request.maturity_years
     annual_payment = _annual_payment(new_debt, effective_new_rate, amortization_years)
@@ -542,6 +598,10 @@ def _scenario(
     liquidity_exhaustion: int | None = None
     for year in range(1, 4):
         beginning_debt = outstanding
+        draw_allowed = (
+            case.request.availability_period_years is None
+            or year <= case.request.availability_period_years
+        )
         new_facility = new_debt if year == 1 else 0
         debt_before_amortization = beginning_debt + new_facility
         growth = (
@@ -563,7 +623,23 @@ def _scenario(
         )
         estimated_new_balance = max(0, debt_before_amortization - existing_debt)
         estimated_new_interest = Decimal(estimated_new_balance) * effective_new_rate
-        scheduled_new_principal = max(ZERO, annual_payment - estimated_new_interest)
+        if amortization_kind == "fully_amortizing":
+            scheduled_new_principal = max(ZERO, annual_payment - estimated_new_interest)
+        elif amortization_kind == "partial":
+            scheduled_new_principal = max(
+                ZERO,
+                Decimal(commitment)
+                * (ONE - case.request.bullet_percentage)
+                / Decimal(max(1, amortization_years)),
+            )
+        elif amortization_kind == "bullet":
+            scheduled_new_principal = (
+                Decimal(estimated_new_balance) * case.request.bullet_percentage
+                if year >= case.request.maturity_years
+                else ZERO
+            )
+        else:
+            scheduled_new_principal = ZERO
         scheduled_amortization = min(
             Decimal(debt_before_amortization),
             Decimal(existing_principal) + scheduled_new_principal,
@@ -579,9 +655,16 @@ def _scenario(
         )
         existing_average = min(average_debt, Decimal(existing_debt))
         new_average = max(ZERO, average_debt - existing_average)
+        commitment_fee = (
+            Decimal(max(0, commitment - estimated_new_balance))
+            * Decimal(case.request.commitment_fee_bps)
+            / Decimal(10_000)
+            if amortization_kind == "revolver"
+            else ZERO
+        )
         base_interest = (
             existing_average * existing_rate + new_average * effective_new_rate
-        )
+        ) + commitment_fee
         optional_paydown = ZERO
         revolver_draw = ZERO
         for _ in range(8):
@@ -591,7 +674,11 @@ def _scenario(
             total_service = total_interest + scheduled_amortization
             pre_financing_cash = Decimal(cash + available.amount_minor) - total_service
             required_draw = max(ZERO, Decimal(minimum_cash) - pre_financing_cash)
-            next_draw = min(Decimal(revolver_available), required_draw)
+            next_draw = (
+                min(Decimal(revolver_available), required_draw)
+                if amortization_kind == "revolver" and draw_allowed
+                else ZERO
+            )
             if abs(next_draw - revolver_draw) <= Decimal(1):
                 revolver_draw = next_draw
                 break
@@ -602,6 +689,18 @@ def _scenario(
         revolver_available -= int(revolver_draw)
         outstanding += int(revolver_draw)
         cash_after_draw = pre_financing_cash + revolver_draw
+        mandatory_prepayment = min(
+            Decimal(max(0, outstanding)),
+            max(
+                ZERO,
+                Decimal(available.amount_minor) * case.request.mandatory_prepayment,
+            ),
+        )
+        if mandatory_prepayment > 0:
+            outstanding -= int(mandatory_prepayment)
+            cash_after_draw -= mandatory_prepayment
+            optional_paydown = mandatory_prepayment
+            total_service += mandatory_prepayment
         cash_shortfall = max(ZERO, Decimal(minimum_cash) - cash_after_draw)
         unpaid_debt_service = max(ZERO, -cash_after_draw)
         cash = int(cash_after_draw.quantize(Decimal(1), rounding=ROUND_HALF_UP))
@@ -947,6 +1046,7 @@ def _reverse_stress(
     earnings: Money,
     debt: Money,
     capacity: CapacityView,
+    underwritten_rate: Decimal | None = None,
 ) -> ReverseStressView:
     del base_cfads, service, earnings
     tolerance = policy.solver_tolerance
@@ -980,6 +1080,7 @@ def _reverse_stress(
             debt,
             starting_cash,
             trial_capacity,
+            underwritten_rate,
         )
 
     def ratio_headroom(
@@ -1481,6 +1582,14 @@ def analyze_case(
     case: CaseInput, *, calculated_at: datetime | None = None
 ) -> AnalysisResult:
     policy, policy_hash = load_policy()
+    resolution = resolve_underwriting_financials(case)
+    canonical_blocked = bool(
+        case.financial_spread.periods and resolution.snapshot.blocking_issues
+    )
+    # Every downstream consumer receives the same resolved financial object. A
+    # failed non-empty spread remains blocked; it is never silently replaced by
+    # plausible-looking legacy numbers.
+    case = case.model_copy(update={"financials": resolution.financials})
     financials = case.financials
     reported_ebitda = ebitda(
         ebit=_money(financials.ebit),
@@ -1566,9 +1675,6 @@ def analyze_case(
     }
     financial_spreading = analyze_spreading(case)
     borrowing_base = calculate_borrowing_base(case, policy)
-    capacity = _capacity(
-        case, policy, debt, earnings, cash_available, service, borrowing_base
-    )
     scorecard = _scorecard(
         policy,
         metrics_raw["gross_leverage"],
@@ -1579,11 +1685,48 @@ def analyze_case(
         metrics_raw["ebitda_margin"],
         case,
     )
-    adjustments = summarize_adjustments(case, policy, earnings)
-    facility_protection = assess_facility(case, policy, borrowing_base)
+    if canonical_blocked:
+        scorecard = scorecard.model_copy(
+            update={
+                "score": None,
+                "grade": None,
+                "grade_label": "Blocked — resolve canonical financial periods",
+                "confidence": "blocked",
+                "confidence_score": 0,
+                "confidence_penalties": [
+                    *scorecard.confidence_penalties,
+                    *resolution.snapshot.blocking_issues,
+                ],
+                "improvement_actions": [
+                    "Resolve the canonical financial-period validation issues before analysis.",
+                    *resolution.snapshot.blocking_issues,
+                ],
+            }
+        )
     pricing = calculate_pricing(case, policy, scorecard)
+    pricing_rate = (
+        None
+        if pricing.indicative_all_in_rate is None
+        else Decimal(pricing.indicative_all_in_rate)
+    )
+    underwritten_rate = _underwritten_rate(case, pricing_rate)
+    capacity = _capacity(
+        case,
+        policy,
+        debt,
+        earnings,
+        cash_available,
+        service,
+        borrowing_base,
+        underwritten_rate,
+        pricing.status,
+    )
+    adjustments = summarize_adjustments(case, policy, earnings)
+    facility_protection = assess_facility(
+        case, policy, borrowing_base, capacity.recommended
+    )
     scenarios = [
-        _scenario(name, case, policy, debt, available_cash, capacity)
+        _scenario(name, case, policy, debt, available_cash, capacity, underwritten_rate)
         for name in ("base", "downside", "severe")
     ]
     covenants = _covenants(scenarios, policy, case, scorecard, borrowing_base)
@@ -1591,7 +1734,14 @@ def analyze_case(
         case, policy, metrics_raw, capacity, scorecard, borrowing_base
     )
     reverse_stress = _reverse_stress(
-        case, policy, cash_available, service, earnings, debt, capacity
+        case,
+        policy,
+        cash_available,
+        service,
+        earnings,
+        debt,
+        capacity,
+        underwritten_rate,
     )
     decision = _decision(case, scorecard, capacity, scenarios, policy_checks)
     serialized = json.dumps(
@@ -1648,7 +1798,7 @@ def analyze_case(
         "secondary_repayment_source": [decision.secondary_repayment_source],
         "historical_financial_performance": [
             f"Revenue {_currency(financials.revenue)}; reported EBITDA {_currency(_view(reported_ebitda))}; adjusted EBITDA {_currency(_view(earnings))}.",
-            f"Selected LTM method: {financial_spreading.selected_ltm_method or 'legacy snapshot'}; status {financial_spreading.ltm_status}.",
+            f"Selected LTM method: {financial_spreading.selected_ltm_method or 'legacy snapshot'}; status {financial_spreading.ltm_status}; snapshot {resolution.snapshot.snapshot_hash[:16]}.",
         ],
         "financial_adjustments": [
             f"Reported EBITDA {_currency(adjustments.reported_ebitda)}; approved adjustment {_currency(adjustments.approved_adjustment)}; adjusted EBITDA {_currency(adjustments.adjusted_ebitda)}.",
@@ -1666,12 +1816,12 @@ def analyze_case(
             "Facility protection is assessed separately and does not alter this obligor grade.",
         ],
         "facility_protection": [
-            f"Score {facility_protection.score}; category {facility_protection.category}; expected recovery {facility_protection.expected_recovery_category}.",
+            f"Score {facility_protection.score}; category {facility_protection.category}; expected recovery {facility_protection.expected_recovery_category}; requested/recommended coverage {facility_protection.coverage_requested}x / {facility_protection.coverage_recommended}x.",
             *facility_protection.main_protections,
             *facility_protection.main_structural_weaknesses,
         ],
         "debt_capacity": [
-            f"Requested {_currency(capacity.requested)}; recommended {_currency(capacity.recommended)}.",
+            f"Capacity status {capacity.status}; underwritten rate {capacity.underwritten_rate or 'suppressed'}; requested {_currency(capacity.requested)}; recommended {_currency(capacity.recommended)}.",
             f"Binding constraint(s): {', '.join(capacity.binding_constraints)}.",
         ],
         "base_case": [

@@ -160,7 +160,7 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
         ],
         "historical_financial_performance": [
             f"營收 {_money(result.case.financials.revenue)}；報告 EBITDA {_money(result.adjustments.reported_ebitda)}；調整後 EBITDA {_money(result.adjustments.adjusted_ebitda)}。",
-            f"LTM 狀態：{_zh_status(result.financial_spreading.ltm_status)}。",
+            f"LTM 狀態：{_zh_status(result.financial_spreading.ltm_status)}；來源快照 {result.financial_spreading.resolved_snapshot.snapshot_hash[:16] if result.financial_spreading.resolved_snapshot else '無'}。",
         ],
         "financial_adjustments": [
             f"已核准調整 {_money(result.adjustments.approved_adjustment)}；正向調整占比 {Decimal(result.adjustments.positive_adjustment_pct) * 100:.2f}%。"
@@ -180,7 +180,7 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
             f"分數 {result.scorecard.score or '已阻擋'}；評等 {result.scorecard.grade or '已阻擋'}；資料信心 {result.scorecard.confidence_score}/100。設施保障不會改變債務人評等。"
         ],
         "facility_protection": [
-            f"設施保障分數 {result.facility_protection.score}；類別 {_zh_status(result.facility_protection.category)}；預期回收類別 {_zh_status(result.facility_protection.expected_recovery_category)}。"
+            f"設施保障分數 {result.facility_protection.score}；類別 {_zh_status(result.facility_protection.category)}；預期回收類別 {_zh_status(result.facility_protection.expected_recovery_category)}；申請／建議覆蓋率 {result.facility_protection.coverage_requested}x／{result.facility_protection.coverage_recommended}x。"
         ],
         "debt_capacity": [
             f"申請 {_money(result.capacity.requested)}；建議 {_money(result.capacity.recommended)}；約束條件數 {len(result.capacity.binding_constraints)}。"
@@ -205,7 +205,15 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
             f"借款基礎：{borrowing}。預支率依版本化示意政策。"
         ],
         "indicative_pricing": [
-            f"參考基準利率 {Decimal(result.pricing.reference_base_rate) * 100:.2f}%；風險利差 {result.pricing.risk_grade_spread_bps} bps；示意全包利率 {Decimal(result.pricing.indicative_all_in_rate) * 100:.2f}%。",
+            (
+                f"參考基準利率 {Decimal(result.pricing.reference_base_rate) * 100:.2f}%；"
+                f"風險利差 {result.pricing.risk_grade_spread_bps} bps；"
+                + (
+                    f"示意全包利率 {Decimal(result.pricing.indicative_all_in_rate) * 100:.2f}%。"
+                    if result.pricing.indicative_all_in_rate is not None
+                    else "示意全包利率：已阻擋，待有效債務人評等與財務期間來源。"
+                )
+            ),
             "僅供教育用途，不代表即時市場報價、銀行承諾或授信建議。",
         ],
         "covenants": [

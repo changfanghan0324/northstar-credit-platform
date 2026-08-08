@@ -447,7 +447,7 @@ def run_analysis(case_id: str, db: Database, owner: SessionId) -> AnalysisResult
     record = _owned(db, case_id, owner)
     result = analyze_case(CaseInput.model_validate(record.input_json))
     record.analysis_json = result.model_dump(mode="json")
-    record.status = "analyzed"
+    record.status = "blocked" if result.analysis_status == "blocked" else "analyzed"
     update_version_analysis(db, record)
     audit(db, record, "analyzed", {"input_hash": result.input_hash})
     db.commit()

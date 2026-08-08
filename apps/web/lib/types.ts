@@ -33,6 +33,13 @@ export type LoanRequest = {
   base_rate: string;
   rate_floor: string;
   amortization_years: number | null;
+  amortization_type: "fully_amortizing" | "partial" | "bullet" | "revolver" | null;
+  bullet_percentage: string;
+  initial_drawn_amount: Money | null;
+  commitment_fee_bps: number;
+  upfront_fee_bps: number;
+  availability_period_years: number | null;
+  mandatory_prepayment: string;
   guarantee: string;
   primary_repayment_source: string;
 };
@@ -124,6 +131,13 @@ export type FinancialPeriod = {
   source_reference: string;
   currency: string;
   scale: "whole" | "thousands" | "millions";
+  flow_type: "discrete" | "cumulative" | "point_in_time";
+  entity_scope: string;
+  accounting_basis: "gaap" | "ifrs" | "tax" | "management" | "unknown";
+  fiscal_calendar: "calendar" | "52_week" | "53_week" | "custom";
+  mapping_version: string;
+  restated: boolean;
+  pro_forma: boolean;
   income_statement: Record<string, Money | null>;
   balance_sheet: Record<string, Money | null>;
   cash_flow: Record<string, Money | null>;
@@ -207,6 +221,20 @@ export type Analysis = {
     ltm_status: "available" | "blocked" | "legacy_snapshot";
     reconciliation_warnings: string[];
     trend: Record<string, Array<string | null>>;
+    resolved_snapshot: {
+      resolver_version: string;
+      snapshot_hash: string;
+      basis: "reported_ltm" | "derived_ltm" | "fiscal_year" | "legacy_snapshot";
+      period_id: string;
+      period_end: string | null;
+      source_period_ids: string[];
+      source_lineage: Record<string, string[]>;
+      financials: Record<string, Money | string>;
+      reconciliation_status: "pass" | "warning" | "blocked";
+      warnings: string[];
+      blocking_issues: string[];
+    } | null;
+    reconciliation_status: "pass" | "warning" | "blocked";
   };
   adjustments: {
     entries: Adjustment[];
@@ -221,6 +249,8 @@ export type Analysis = {
     dscr_after: string | null;
   };
   capacity: {
+    status: "available" | "blocked";
+    underwritten_rate: string | null;
     requested: Money;
     leverage: Money;
     dscr: Money;
@@ -254,6 +284,8 @@ export type Analysis = {
     score: string;
     category: string;
     expected_recovery_category: string;
+    coverage_requested: string;
+    coverage_recommended: string;
     factors: Record<string, string>;
     main_protections: string[];
     main_structural_weaknesses: string[];
@@ -279,6 +311,7 @@ export type Analysis = {
     policy_notice: string;
   };
   pricing: {
+    status: "available" | "blocked";
     reference_base_rate: string;
     risk_grade_spread_bps: number;
     tenor_adjustment_bps: number;
@@ -287,7 +320,7 @@ export type Analysis = {
     covenant_adjustment_bps: number;
     concentration_adjustment_bps: number;
     relationship_adjustment_bps: number;
-    indicative_all_in_rate: string;
+    indicative_all_in_rate: string | null;
     commitment_fee_bps: number | null;
     upfront_fee_bps: number | null;
     disclaimer: string;
