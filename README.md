@@ -98,6 +98,9 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 ## Documentation
 
 - [Current release status](docs/release-status.md)
+- [v6 pre-fix self-audit](docs/audits/v6-pre-fix-audit.md)
+- [v6 post-fix self-audit](docs/audits/v6-post-fix-audit.md)
+- [Methodology](docs/methodology.md)
 - [v6 model-consistency hardening prompt](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [Money scale contract](docs/architecture/money-scale-contract.md)
 - [Financial lineage contract](docs/architecture/financial-lineage-contract.md)
@@ -108,7 +111,6 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [Provenance and completion contract](docs/architecture/provenance-completion-contract.md)
 - [v6 Claude Opus 5 High review](docs/collaboration/v6-claude-opus-5-review.md)
 - [v6 decision log](docs/collaboration/v6-decision-log.md)
-- [Methodology](docs/methodology.md)
 - [Current model limitations](docs/release-status.md#current-limitations)
 - [Test evidence](docs/release-status.md#verification-at-release-authoring)
 - [Demo cases](data/demo_cases/)

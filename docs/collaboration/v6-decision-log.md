@@ -202,3 +202,28 @@ Evidence:
 - Final local gate: 133 Python tests, 93.30% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 13 passed / 1 intentional
   mobile skip.
+
+## v6-08 — Final independent audit
+
+Date: 2026-08-08
+Status: implementation complete; final audit complete; production verification complete
+
+Decision: close the eight-phase model-consistency pass without expanding product
+scope. The methodology, bilingual README, pre-fix/post-fix audits, release truth,
+and collaboration records now agree on the implemented invariants and the
+Portfolio Demo Mode boundary. No claim of live data, regulated underwriting,
+committee readiness, durable multi-tenant storage, or accessible tagged PDFs is
+made.
+
+Evidence:
+
+- `docs/audits/v6-pre-fix-audit.md` and `docs/audits/v6-post-fix-audit.md`.
+- `docs/methodology.md` v6 behavior groups and explicit provenance/completion
+  semantics.
+- Final local gate: 133 Python tests, 93.30% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and Playwright 13 passed / 1 intentional
+  mobile skip.
+- Claude Opus 5 High final challenge `bfd2d614-e755-463a-ae44-ec251857ecef`
+  (PASS; no blocking findings).
+- Production deployment `dpl_AadQpGe2ZVipaPo9Jjva84znAakA` remained READY with
+  public bilingual, API, PDF, browser, and runtime-error checks green.

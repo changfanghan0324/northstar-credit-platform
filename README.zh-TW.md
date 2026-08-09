@@ -84,6 +84,9 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 ## 文件
 
 - [目前發布狀態](docs/release-status.md)
+- [v6 修正前自我稽核](docs/audits/v6-pre-fix-audit.md)
+- [v6 修正後自我稽核](docs/audits/v6-post-fix-audit.md)
+- [方法論](docs/methodology.md)
 - [v6 模型一致性強化規格](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [金額尺度契約](docs/architecture/money-scale-contract.md)
 - [財務來源血緣契約](docs/architecture/financial-lineage-contract.md)

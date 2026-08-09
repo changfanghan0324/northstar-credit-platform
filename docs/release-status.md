@@ -1,13 +1,13 @@
 # Northstar current release status
 
-Status: **Portfolio Demo Mode release — v6-07 production-verified; v6-08 pending**
+Status: **Portfolio Demo Mode release — v6 complete; final audit passed**
 
 This is the single current release truth. Historical audits and debate logs remain in the repository for traceability but do not override this page.
 
 The [Northstar v6 — Final Credit Model Consistency](prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 specification is being executed as eight independently tested and committed
-phases. v6-01 through v6-07 are production-verified; the product is not
-v6-complete until v6-08 is finished.
+phases. v6-01 through v6-08 are independently tested, reviewed, committed, and
+production-verified.
 
 ## Release coordinates
 
@@ -54,7 +54,12 @@ v6-complete until v6-08 is finished.
   Claude Opus 5 High initial challenge
   `821d7747-de3d-4591-9f12-522f635a91d1` was remediated; re-challenge
   `941f9c2e-e94a-4df7-9f03-48a307b23de1` passed with no blocking findings.
-- **v6-08:** pending; no completion claim is made for that phase.
+- **v6-08 — Final independent audit:** complete under the stated Portfolio Demo
+  Mode boundary. Phase commit is `v6-08-final-audit`; Claude Opus 5 High final
+  challenge `bfd2d614-e755-463a-ae44-ec251857ecef` passed with no blocking
+  findings. The production verification remains anchored to READY deployment
+  `dpl_AadQpGe2ZVipaPo9Jjva84znAakA` because v6-08 changes are documentation and
+  audit records only.
 
 ## Verification at release authoring
 
@@ -110,6 +115,13 @@ v6-complete until v6-08 is finished.
   Browser production review showed provenance/completion, source counts,
   acknowledgement, and no application error. Vercel runtime errors in the last
   hour: none.
+- v6-08 verification: the final audit reran the complete v6-07 gate unchanged:
+  133 Python tests passed at 93.30% coverage; strict Mypy, Ruff, formatting,
+  TypeScript, ESLint, Next build, and Playwright 13 passed with one intentional
+  mobile skip. Documentation diff checks passed. Production remained READY at
+  `dpl_AadQpGe2ZVipaPo9Jjva84znAakA`; public bilingual routes, API/demo health,
+  provenance/completion validation, detailed PDF evidence, browser Review UI,
+  and Vercel runtime-error checks remained green.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

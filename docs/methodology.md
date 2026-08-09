@@ -1,7 +1,7 @@
 # Financial Methodology Contract
 
-Version: 1.0.0
-Date: 2026-08-06
+Version: 6.0.0
+Date: 2026-08-08
 Author: Codex
 Independent reviewer: Claude Opus 5 High (`claude-opus-5`)
 
@@ -13,13 +13,27 @@ This document is the specification shared by the Python engine and the independe
 
 Normalized monetary values are `{amount_minor: int, currency: ISO-4217 code, minor_unit_exponent: int}`. USD uses exponent 2, JPY 0, and KWD 3. Whole/thousands/millions is display/import metadata only; the browser/API boundary normalizes to actual minor units exactly once, and the resolver never multiplies again. Money arithmetic never uses binary floating point. [v5 scale contract]
 
-## v5 behavior groups
+## v6 behavior groups
 
 <details><summary>1. Data and spreading</summary>
 
 The canonical snapshot records its hash, selected flow periods, current-YTD balance-sheet source, metric-level lineage, source authority, and validation state. FY + current YTD − prior YTD composes flow lines; point-in-time balance-sheet lines come from current YTD. A non-empty invalid spread blocks decision-critical values rather than inheriting a legacy snapshot.
 
 </details>
+
+### 1.3 Provenance and evidence-based completion
+
+Every material input is classified as `template-derived`, `user-entered`,
+`calculated`, `imported`, or `override`. The Review page reports the five source
+counts, percentages, inherited share, warnings, and any required acknowledgement.
+For non-demo cases, an omitted material label is unclassified and blocks
+`analysis_ready`; the three known demo slugs use an explicit compatibility
+migration to template-derived values.
+
+Completion is independent of wizard navigation. Required fields, six business-risk
+evidence items, optional sections, scorecard grade, unclassified provenance, and
+template acknowledgement combine into the typed `CompletionSummary`. Validation,
+analysis, memo metadata, and both detailed PDF locales carry the same summary.
 
 <details><summary>2. Borrower risk</summary>
 

@@ -267,3 +267,21 @@ Model: `claude-opus-5` (High effort; independent supplied-summary review)
 The challenge was a supplied-summary review and did not inspect the repository
 or production directly. Its verdict is paired with the executable local gate,
 production smoke, and browser check recorded in the release status.
+
+## v6-08 — Final independent audit
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Final challenge
+
+- Session: `bfd2d614-e755-463a-ae44-ec251857ecef`
+- Verdict: **PASS — v6 final audit approved for the stated Portfolio Demo Mode boundary**.
+- Claude found no blocking correctness, consistency, governance, or misleading
+  public-claim risk. Non-blocking follow-ups cover threshold wording,
+  self-audit labeling, tagged PDFs, mobile skip documentation, and future
+  multi-currency/session regression coverage.
+
+This was a supplied-summary review, not source-code inspection or independent
+execution. Its scope and limitation are stated here and paired with the local
+verification and production evidence in the release status.
