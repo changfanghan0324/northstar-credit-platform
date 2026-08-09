@@ -181,6 +181,8 @@ def test_localized_detailed_pdf_uses_currency_not_minor_units() -> None:
         assert len(reader.pages) > 1
         assert reader.metadata is not None
         assert reader.metadata.title == "北極星授信備忘錄"
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        assert "統一授信機制" in text
 
 
 def test_expired_case_is_not_read_or_listed() -> None:
@@ -212,6 +214,7 @@ def test_english_pdf_preserves_mandated_disclaimer_punctuation() -> None:
         text = "\n".join(page.extract_text() for page in reader.pages)
         assert "Synthetic demonstration data" in text
         assert "Educational and illustrative only" in text
+        assert "Resolved mechanics: term_loan; fully_amortizing" in text
 
 
 def test_blocked_debt_reconciliation_is_visible_in_analysis_and_pdf() -> None:

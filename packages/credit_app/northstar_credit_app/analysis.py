@@ -110,6 +110,7 @@ def _signed_adjustment_total(case: CaseInput, field: str) -> int:
 
 def _resolve_facility_mechanics(case: CaseInput) -> ResolvedFacilityMechanics:
     request = case.request
+    blocking_issues: list[str] = []
     kind = (
         "revolver"
         if request.facility_type == "asset_based"
@@ -122,6 +123,39 @@ def _resolve_facility_mechanics(case: CaseInput) -> ResolvedFacilityMechanics:
             else "fully_amortizing"
             if request.amortization_years is not None
             else "bullet"
+        )
+    if request.facility_type == "asset_based" and request.amortization_type not in {
+        None,
+        "revolver",
+    }:
+        blocking_issues.append(
+            "Asset-based facilities must resolve to revolver mechanics; the submitted amortization type conflicts."
+        )
+    if (
+        request.facility_type == "asset_based"
+        and request.security_type != "asset_based"
+    ):
+        blocking_issues.append(
+            "Asset-based facilities must declare asset-based security so collateral mechanics are explicit."
+        )
+    if request.facility_type == "term_loan" and request.amortization_type == "revolver":
+        blocking_issues.append(
+            "Term loans cannot declare revolver amortization mechanics."
+        )
+    if kind == "bullet" and request.bullet_percentage <= 0:
+        blocking_issues.append(
+            "Bullet mechanics require a positive balloon percentage."
+        )
+    if kind == "partial" and request.bullet_percentage <= 0:
+        blocking_issues.append(
+            "Partial-balloon mechanics require a positive balloon percentage."
+        )
+    if kind == "revolver" and request.bullet_percentage not in {
+        Decimal("0"),
+        Decimal("1"),
+    }:
+        blocking_issues.append(
+            "Revolver mechanics cannot carry a partial or bullet balloon percentage."
         )
     initial = request.initial_drawn_amount or request.amount.model_copy(
         update={"amount_minor": 0}
@@ -138,12 +172,21 @@ def _resolve_facility_mechanics(case: CaseInput) -> ResolvedFacilityMechanics:
         commitment_fee_bps=request.commitment_fee_bps,
         mandatory_prepayment=str(request.mandatory_prepayment),
         security_type=request.security_type,
-        status="available",
-        explanation="Resolved once from explicit facility mechanics and reused by downstream views.",
+        status="blocked" if blocking_issues else "available",
+        explanation=(
+            "Facility mechanics are blocked: " + " ".join(blocking_issues)
+            if blocking_issues
+            else "Resolved once from explicit facility mechanics and reused by downstream views."
+        ),
+        blocking_issues=tuple(blocking_issues),
     )
 
 
-def _rate_decision(case: CaseInput, pricing_rate: Decimal | None) -> RateDecisionView:
+def _rate_decision(
+    case: CaseInput,
+    mechanics: ResolvedFacilityMechanics,
+    pricing_rate: Decimal | None,
+) -> RateDecisionView:
     index = (
         case.request.base_rate
         if case.request.rate_type == "floating"
@@ -161,7 +204,7 @@ def _rate_decision(case: CaseInput, pricing_rate: Decimal | None) -> RateDecisio
         shocked_index_rate=str(underwritten_index),
         spread_bps=spread_bps,
         underwritten_rate=str(all_in.quantize(Decimal("0.0001"))),
-        commitment_fee_bps=case.request.commitment_fee_bps,
+        commitment_fee_bps=mechanics.commitment_fee_bps,
         upfront_fee_bps=case.request.upfront_fee_bps,
         status="available" if pricing_rate is not None else "blocked",
         explanation="Floor applies to the index; the spread is applied once and the resulting rate is the underwritten rate.",
@@ -712,21 +755,14 @@ def _underwritten_rate(case: CaseInput, pricing_rate: Decimal | None = None) -> 
     return max(request_floor, pricing_rate or ZERO)
 
 
-def _amortization_kind(case: CaseInput) -> str:
-    if case.request.facility_type == "asset_based":
-        return "revolver"
-    if case.request.amortization_type is not None:
-        return case.request.amortization_type
-    if case.request.facility_type in {"revolver", "asset_based"}:
-        return "revolver"
-    return (
-        "fully_amortizing" if case.request.amortization_years is not None else "bullet"
-    )
+def _amortization_kind(mechanics: ResolvedFacilityMechanics) -> str:
+    return mechanics.amortization_type
 
 
 def _capacity(
     case: CaseInput,
     policy: CreditPolicy,
+    mechanics: ResolvedFacilityMechanics,
     debt_reconciliation: DebtReconciliationView,
     earnings: Money,
     cash_available: Money,
@@ -736,7 +772,7 @@ def _capacity(
     pricing_status: Literal["available", "blocked"] = "available",
 ) -> CapacityView:
     debt = debt_reconciliation.selected_debt.engine()
-    request = _money(case.request.amount)
+    request = mechanics.commitment.engine()
     maximum_debt = Decimal(earnings.amount_minor) * policy.maximum_leverage
     leverage_raw = maximum_debt - Decimal(debt.amount_minor)
     leverage_minor = max(
@@ -745,28 +781,28 @@ def _capacity(
     max_service = Decimal(cash_available.amount_minor) / policy.minimum_dscr
     available_service = max(ZERO, max_service - Decimal(existing_service.amount_minor))
     effective_rate = underwritten_rate or _underwritten_rate(case)
-    amortization_kind = _amortization_kind(case)
+    amortization_kind = _amortization_kind(mechanics)
     if amortization_kind in {"bullet", "revolver"}:
         dscr_raw = (
             available_service / effective_rate
             if effective_rate > ZERO
-            else available_service * Decimal(case.request.maturity_years)
+            else available_service * Decimal(mechanics.maturity_years)
         )
     else:
         dscr_raw = _annuity_capacity(
             available_service,
             effective_rate,
-            case.request.amortization_years or case.request.maturity_years,
+            mechanics.amortization_years or mechanics.maturity_years,
         )
     dscr_minor = max(0, int(dscr_raw.quantize(Decimal(1), rounding=ROUND_HALF_UP)))
-    collateral_applicable = case.request.security_type in {"secured", "asset_based"}
+    collateral_applicable = mechanics.security_type in {"secured", "asset_based"}
     candidates = {
         "requested_amount": request.amount_minor,
         "leverage_capacity": leverage_minor,
         "dscr_capacity": dscr_minor,
         "policy_capacity": policy.policy_capacity_minor,
     }
-    if case.request.facility_type == "asset_based":
+    if mechanics.facility_type == "asset_based":
         candidates["collateral_capacity"] = (
             0
             if borrowing_base.availability is None
@@ -789,14 +825,14 @@ def _capacity(
             status=(
                 "blocked"
                 if key == "collateral_capacity"
-                and case.request.facility_type == "asset_based"
+                and mechanics.facility_type == "asset_based"
                 and borrowing_base.status == "blocked"
                 else "valid"
             ),
             reason=(
                 borrowing_base.policy_notice
                 if key == "collateral_capacity"
-                and case.request.facility_type == "asset_based"
+                and mechanics.facility_type == "asset_based"
                 else "Calculated from the request, financial inputs, and active policy."
             ),
             policy_ref="policy.v1" if key == "policy_capacity" else None,
@@ -827,7 +863,7 @@ def _capacity(
         dscr=_view(_new_money(dscr_minor, request)),
         collateral=(
             borrowing_base.borrowing_base
-            if case.request.facility_type == "asset_based"
+            if mechanics.facility_type == "asset_based"
             else case.financials.collateral_capacity
             if collateral_applicable
             else None
@@ -843,6 +879,7 @@ def _scenario(
     name: str,
     case: CaseInput,
     policy: CreditPolicy,
+    mechanics: ResolvedFacilityMechanics,
     debt_reconciliation: DebtReconciliationView,
     starting_cash: Money,
     capacity: CapacityView,
@@ -860,12 +897,8 @@ def _scenario(
     )
     existing_debt = debt_reconciliation.selected_debt.amount_minor
     commitment = capacity.recommended.amount_minor
-    amortization_kind = _amortization_kind(case)
-    initial_draw = (
-        case.request.initial_drawn_amount.amount_minor
-        if case.request.initial_drawn_amount is not None
-        else 0
-    )
+    amortization_kind = _amortization_kind(mechanics)
+    initial_draw = mechanics.initial_drawn.amount_minor
     initial_draw = min(commitment, max(0, initial_draw))
     new_debt = initial_draw if amortization_kind == "revolver" else commitment
     outstanding = existing_debt
@@ -882,7 +915,7 @@ def _scenario(
             case.request.rate_floor,
             effective_new_rate + assumptions.rate_shock,
         )
-    amortization_years = case.request.amortization_years or case.request.maturity_years
+    amortization_years = mechanics.amortization_years or mechanics.maturity_years
     annual_payment = _annual_payment(new_debt, effective_new_rate, amortization_years)
     existing_interest = debt_reconciliation.selected_interest.amount_minor
     if debt_reconciliation.interest_shock_basis in {
@@ -905,8 +938,8 @@ def _scenario(
     for year in range(1, 4):
         beginning_debt = outstanding
         draw_allowed = (
-            case.request.availability_period_years is None
-            or year <= case.request.availability_period_years
+            mechanics.availability_period_years is None
+            or year <= mechanics.availability_period_years
         )
         new_facility = new_debt if year == 1 else 0
         debt_before_amortization = beginning_debt + new_facility
@@ -935,13 +968,13 @@ def _scenario(
             scheduled_new_principal = max(
                 ZERO,
                 Decimal(commitment)
-                * (ONE - case.request.bullet_percentage)
+                * (ONE - Decimal(mechanics.bullet_percentage))
                 / Decimal(max(1, amortization_years)),
             )
         elif amortization_kind == "bullet":
             scheduled_new_principal = (
-                Decimal(estimated_new_balance) * case.request.bullet_percentage
-                if year >= case.request.maturity_years
+                Decimal(estimated_new_balance) * Decimal(mechanics.bullet_percentage)
+                if year >= mechanics.maturity_years
                 else ZERO
             )
         else:
@@ -963,7 +996,7 @@ def _scenario(
         new_average = max(ZERO, average_debt - existing_average)
         commitment_fee = (
             Decimal(max(0, commitment - estimated_new_balance))
-            * Decimal(case.request.commitment_fee_bps)
+            * Decimal(mechanics.commitment_fee_bps)
             / Decimal(10_000)
             if amortization_kind == "revolver"
             else ZERO
@@ -999,7 +1032,8 @@ def _scenario(
             Decimal(max(0, outstanding)),
             max(
                 ZERO,
-                Decimal(available.amount_minor) * case.request.mandatory_prepayment,
+                Decimal(available.amount_minor)
+                * Decimal(mechanics.mandatory_prepayment),
             ),
         )
         if mandatory_prepayment > 0:
@@ -1031,7 +1065,7 @@ def _scenario(
             else 0
         )
         refinancing_need = min(Decimal(outstanding), Decimal(instrument_maturities))
-        if year >= case.request.maturity_years and outstanding > 0:
+        if year >= mechanics.maturity_years and outstanding > 0:
             refinancing_need = Decimal(outstanding)
         leverage_breach = (
             leverage_result.value_exact > policy.maximum_leverage
@@ -1134,14 +1168,16 @@ def _scenario(
     balloon_amount: MoneyValue | None = None
     exit_leverage: str | None = None
     if amortization_kind in {"bullet", "partial"}:
-        horizon = max(case.request.maturity_years, 3)
+        horizon = max(mechanics.maturity_years, 3)
         exit_revenue = (
             Decimal(case.financials.revenue.amount_minor)
             * (ONE + assumptions.revenue_growth) ** horizon
         )
         exit_ebitda = exit_revenue * initial_margin
         balloon_minor = int(
-            (Decimal(commitment) * case.request.bullet_percentage).quantize(Decimal(1))
+            (Decimal(commitment) * Decimal(mechanics.bullet_percentage)).quantize(
+                Decimal(1)
+            )
         )
         exit_debt = Decimal(years[-1].ending_debt.amount_minor) + Decimal(balloon_minor)
         balloon_amount = _view(_new_money(balloon_minor, revenue))
@@ -1185,6 +1221,7 @@ def _covenants(
     scenarios: list[ScenarioView],
     policy: CreditPolicy,
     case: CaseInput,
+    mechanics: ResolvedFacilityMechanics,
     scorecard: ScorecardView,
     borrowing_base: BorrowingBaseView,
 ) -> list[CovenantView]:
@@ -1358,7 +1395,7 @@ def _covenants(
                 ),
             ]
         )
-    if case.request.facility_type == "asset_based":
+    if mechanics.facility_type == "asset_based":
         output.extend(
             [
                 CovenantView(
@@ -1396,6 +1433,7 @@ def _covenants(
 def _reverse_stress(
     case: CaseInput,
     policy: CreditPolicy,
+    mechanics: ResolvedFacilityMechanics,
     base_cfads: Money,
     service: Money,
     earnings: Money,
@@ -1423,7 +1461,7 @@ def _reverse_stress(
                     "recommended": _view(
                         _new_money(
                             max(0, int(loan_minor.quantize(Decimal(1)))),
-                            _money(case.request.amount),
+                            mechanics.commitment.engine(),
                         )
                     )
                 }
@@ -1432,6 +1470,7 @@ def _reverse_stress(
             scenario_name,
             trial_case,
             policy,
+            mechanics,
             debt_reconciliation,
             starting_cash,
             trial_capacity,
@@ -1554,7 +1593,7 @@ def _reverse_stress(
         tolerance=Decimal(100),
         max_iterations=policy.solver_max_iterations,
         objective=policy_loan_headroom,
-        money_template=case.request.amount,
+        money_template=mechanics.commitment,
         interpretation="Maximum proposed loan that preserves downside leverage, DSCR, and minimum-liquidity policy.",
     )
 
@@ -1573,7 +1612,7 @@ def _reverse_stress(
         tolerance=Decimal(100),
         max_iterations=policy.solver_max_iterations,
         objective=severe_liquidity_headroom,
-        money_template=case.request.amount,
+        money_template=mechanics.commitment,
         interpretation="Maximum proposed loan that preserves minimum operating cash in the severe forecast.",
     )
     solvers = [
@@ -1605,6 +1644,7 @@ def _reverse_stress(
 def _policy_checks(
     case: CaseInput,
     policy: CreditPolicy,
+    mechanics: ResolvedFacilityMechanics,
     metrics: dict[str, RatioResult],
     capacity: CapacityView,
     scorecard: ScorecardView,
@@ -1655,12 +1695,12 @@ def _policy_checks(
         + case.financials.undrawn_revolver.amount_minor
         - case.financials.minimum_operating_cash.amount_minor
     )
-    maturity_pass = case.request.maturity_years * 12 <= policy.maximum_maturity_months
+    maturity_pass = mechanics.maturity_years * 12 <= policy.maximum_maturity_months
     liquidity_pass = liquidity_minor >= policy.minimum_liquidity_minor
     currency_pass = all(
         value.currency == policy.reporting_currency
         for value in (
-            case.request.amount,
+            mechanics.commitment,
             case.financials.revenue,
             case.financials.cash_interest,
             case.financials.long_term_debt,
@@ -1710,7 +1750,7 @@ def _policy_checks(
             "maximum_maturity",
             "Maximum maturity",
             maturity_pass,
-            f"{case.request.maturity_years * 12} months",
+            f"{mechanics.maturity_years * 12} months",
             f"{policy.maximum_maturity_months} months",
             False,
         ),
@@ -1726,7 +1766,7 @@ def _policy_checks(
             "reporting_currency",
             "Reporting currency",
             currency_pass,
-            case.request.amount.currency,
+            mechanics.commitment.currency,
             policy.reporting_currency,
             True,
         ),
@@ -1766,16 +1806,16 @@ def _policy_checks(
         (
             "maximum_exposure",
             "Maximum exposure",
-            case.request.amount.amount_minor <= policy.maximum_exposure_minor,
-            str(case.request.amount.amount_minor),
+            mechanics.commitment.amount_minor <= policy.maximum_exposure_minor,
+            str(mechanics.commitment.amount_minor),
             str(policy.maximum_exposure_minor),
             True,
         ),
         (
             "facility_restrictions",
             "Permitted facility type",
-            case.request.facility_type in policy.allowed_facility_types,
-            case.request.facility_type,
+            mechanics.facility_type in policy.allowed_facility_types,
+            mechanics.facility_type,
             ", ".join(policy.allowed_facility_types),
             True,
         ),
@@ -1806,7 +1846,7 @@ def _policy_checks(
                 else "None",
             )
         )
-    if case.request.security_type == "unsecured":
+    if mechanics.security_type == "unsecured":
         checks.append(
             PolicyCheckView(
                 key="minimum_collateral_coverage",
@@ -1824,13 +1864,13 @@ def _policy_checks(
     else:
         collateral_amount = (
             borrowing_base.borrowing_base
-            if case.request.facility_type == "asset_based"
+            if mechanics.facility_type == "asset_based"
             else case.financials.collateral_capacity
         )
         collateral_coverage = (
             Decimal(collateral_amount.amount_minor)
-            / Decimal(case.request.amount.amount_minor)
-            if collateral_amount is not None and case.request.amount.amount_minor > 0
+            / Decimal(mechanics.commitment.amount_minor)
+            if collateral_amount is not None and mechanics.commitment.amount_minor > 0
             else ZERO
         )
         passed = collateral_coverage >= policy.minimum_collateral_coverage
@@ -1853,6 +1893,7 @@ def _policy_checks(
 
 def _decision(
     case: CaseInput,
+    mechanics: ResolvedFacilityMechanics,
     scorecard: ScorecardView,
     capacity: CapacityView,
     scenarios: list[ScenarioView],
@@ -1901,7 +1942,7 @@ def _decision(
         conditions.append(
             "Monthly liquidity reporting until downside headroom is restored."
         )
-    if case.request.security_type != "unsecured":
+    if mechanics.security_type != "unsecured":
         conditions.append(
             "Perfect and maintain the proposed collateral security interest."
         )
@@ -1910,7 +1951,7 @@ def _decision(
         monitoring: list[str] = []
         secondary_source = (
             "No collateral-based secondary repayment source is recognized for an unsecured declined facility."
-            if case.request.security_type == "unsecured"
+            if mechanics.security_type == "unsecured"
             else "No active-loan conditions; reconsider only after the listed prerequisites are satisfied."
         )
     else:
@@ -1921,7 +1962,7 @@ def _decision(
         ]
         secondary_source = (
             "No collateral-based secondary repayment source; refinancing is not assumed."
-            if case.request.security_type == "unsecured"
+            if mechanics.security_type == "unsecured"
             else "Eligible borrower collateral subject to documented advance rates; refinancing is not assumed."
         )
     return DecisionView(
@@ -1930,13 +1971,12 @@ def _decision(
         conditions=conditions,
         primary_repayment_source=case.request.primary_repayment_source,
         secondary_repayment_source=secondary_source,
-        facility_type=case.request.facility_type,
-        maturity_years=case.request.maturity_years,
-        amortization_years=case.request.amortization_years
-        or case.request.maturity_years,
+        facility_type=mechanics.facility_type,
+        maturity_years=mechanics.maturity_years,
+        amortization_years=mechanics.amortization_years or mechanics.maturity_years,
         collateral=(
             "None — unsecured"
-            if case.request.security_type == "unsecured"
+            if mechanics.security_type == "unsecured"
             else "Eligible borrower assets subject to documented advance rates"
         ),
         guarantee=case.request.guarantee,
@@ -1955,10 +1995,13 @@ def analyze_case(
     resolution = resolve_underwriting_financials(case)
     debt_reconciliation = _reconcile_debt(case, resolution.financials)
     debt_blocked = debt_reconciliation.status == "blocked"
+    facility_mechanics = _resolve_facility_mechanics(case)
+    mechanics_blocked = facility_mechanics.status == "blocked"
     canonical_blocked = bool(
         (case.financial_spread.periods and resolution.snapshot.blocking_issues)
         or resolution.snapshot.blocked_authority_fields
         or debt_blocked
+        or mechanics_blocked
     )
     # Every downstream consumer receives the same resolved financial object. A
     # failed non-empty spread remains blocked; it is never silently replaced by
@@ -2067,7 +2110,7 @@ def analyze_case(
                 blocked_reason,
             )
     financial_spreading = analyze_spreading(case)
-    borrowing_base = calculate_borrowing_base(case, policy)
+    borrowing_base = calculate_borrowing_base(case, policy, facility_mechanics)
     scorecard = _scorecard(
         policy,
         metrics_raw["gross_leverage"],
@@ -2096,6 +2139,7 @@ def analyze_case(
                         if debt_blocked
                         else []
                     ),
+                    *facility_mechanics.blocking_issues,
                 ],
                 "improvement_actions": [
                     "Resolve the canonical financial-period validation issues before analysis.",
@@ -2107,21 +2151,26 @@ def analyze_case(
                         if debt_blocked
                         else []
                     ),
+                    *(
+                        ["Resolve facility mechanics conflicts before analysis."]
+                        if mechanics_blocked
+                        else []
+                    ),
                 ],
             }
         )
-    pricing = calculate_pricing(case, policy, scorecard)
+    pricing = calculate_pricing(case, policy, scorecard, facility_mechanics)
     pricing_rate = (
         None
         if pricing.indicative_all_in_rate is None
         else Decimal(pricing.indicative_all_in_rate)
     )
     underwritten_rate = _underwritten_rate(case, pricing_rate)
-    rate_decision = _rate_decision(case, pricing_rate)
-    facility_mechanics = _resolve_facility_mechanics(case)
+    rate_decision = _rate_decision(case, facility_mechanics, pricing_rate)
     capacity = _capacity(
         case,
         policy,
+        facility_mechanics,
         debt_reconciliation,
         earnings,
         cash_available,
@@ -2130,8 +2179,8 @@ def analyze_case(
         underwritten_rate,
         pricing.status,
     )
-    if blocked_authority or debt_blocked:
-        zero_capacity = _view(_new_money(0, _money(case.request.amount)))
+    if blocked_authority or debt_blocked or mechanics_blocked:
+        zero_capacity = _view(_new_money(0, facility_mechanics.commitment.engine()))
         capacity = capacity.model_copy(
             update={
                 "status": "blocked",
@@ -2139,18 +2188,23 @@ def analyze_case(
                 "underwritten_rate": None,
                 "dscr": zero_capacity,
                 "recommended": zero_capacity,
-                "binding_constraints": ["blocked_financial_source"],
+                "binding_constraints": [
+                    "blocked_facility_mechanics"
+                    if mechanics_blocked
+                    else "blocked_financial_source"
+                ],
             }
         )
     adjustments = summarize_adjustments(case, policy, earnings, debt_reconciliation)
     facility_protection = assess_facility(
-        case, policy, borrowing_base, capacity.recommended
+        case, policy, facility_mechanics, borrowing_base, capacity.recommended
     )
     scenarios = [
         _scenario(
             name,
             case,
             policy,
+            facility_mechanics,
             debt_reconciliation,
             available_cash,
             capacity,
@@ -2158,7 +2212,7 @@ def analyze_case(
         )
         for name in ("base", "downside", "severe")
     ]
-    if blocked_authority or debt_blocked:
+    if blocked_authority or debt_blocked or mechanics_blocked:
         scenarios = [
             scenario.model_copy(
                 update={
@@ -2175,18 +2229,31 @@ def analyze_case(
                         for year in scenario.years
                     ],
                     "maturity_test_status": "blocked",
-                    "maturity_test_reason": "Blocked until debt-service source authority is reconciled.",
+                    "maturity_test_reason": (
+                        "Blocked until canonical facility mechanics are resolved."
+                        if mechanics_blocked
+                        else "Blocked until debt-service source authority is reconciled."
+                    ),
                 }
             )
             for scenario in scenarios
         ]
-    covenants = _covenants(scenarios, policy, case, scorecard, borrowing_base)
+    covenants = _covenants(
+        scenarios, policy, case, facility_mechanics, scorecard, borrowing_base
+    )
     policy_checks = _policy_checks(
-        case, policy, metrics_raw, capacity, scorecard, borrowing_base
+        case,
+        policy,
+        facility_mechanics,
+        metrics_raw,
+        capacity,
+        scorecard,
+        borrowing_base,
     )
     reverse_stress = _reverse_stress(
         case,
         policy,
+        facility_mechanics,
         cash_available,
         service,
         earnings,
@@ -2194,17 +2261,23 @@ def analyze_case(
         capacity,
         underwritten_rate,
     )
-    if blocked_authority or debt_blocked:
+    if blocked_authority or debt_blocked or mechanics_blocked:
         reverse_stress = reverse_stress.model_copy(
             update={
                 "status": "blocked",
                 "dscr_minimum_revenue_decline": None,
                 "maximum_downside_loan": None,
                 "converged": False,
-                "failure_reason": "Blocked until decision-critical financial source authority is reconciled.",
+                "failure_reason": (
+                    "Blocked until canonical facility mechanics are resolved."
+                    if mechanics_blocked
+                    else "Blocked until decision-critical financial source authority is reconciled."
+                ),
             }
         )
-    decision = _decision(case, scorecard, capacity, scenarios, policy_checks)
+    decision = _decision(
+        case, facility_mechanics, scorecard, capacity, scenarios, policy_checks
+    )
     serialized = json.dumps(
         {
             "case": case.model_dump(mode="json"),
@@ -2263,7 +2336,8 @@ def analyze_case(
             f"{case.borrower.legal_name} requests {_currency(case.request.amount)}."
         ],
         "facility_structure": [
-            f"{decision.facility_type}; {case.request.rate_type} rate; {decision.maturity_years}-year maturity; {decision.amortization_years}-year amortization."
+            f"Resolved mechanics: {facility_mechanics.facility_type}; {facility_mechanics.amortization_type}; status {facility_mechanics.status}; {case.request.rate_type} rate; {facility_mechanics.maturity_years}-year maturity; {facility_mechanics.amortization_years or facility_mechanics.maturity_years}-year amortization.",
+            *facility_mechanics.blocking_issues,
         ],
         "loan_purpose": [case.request.purpose],
         "sources_and_uses": [

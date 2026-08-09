@@ -15,6 +15,7 @@ class ContractModel(BaseModel):
 
 
 class MoneyValue(ContractModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     amount_minor: int = Field(
         ge=-9_007_199_254_740_991,
         le=9_007_199_254_740_991,
@@ -842,6 +843,8 @@ class DebtReconciliationView(ContractModel):
 class ResolvedFacilityMechanics(ContractModel):
     """Canonical facility structure consumed by capacity, stress, and terms."""
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     facility_type: Literal["term_loan", "revolver", "asset_based"]
     amortization_type: Literal["fully_amortizing", "partial", "bullet", "revolver"]
     commitment: MoneyValue
@@ -855,6 +858,7 @@ class ResolvedFacilityMechanics(ContractModel):
     security_type: Literal["unsecured", "secured", "asset_based"]
     status: Literal["available", "blocked"]
     explanation: str
+    blocking_issues: tuple[str, ...] = ()
 
 
 class SolverResultView(ContractModel):

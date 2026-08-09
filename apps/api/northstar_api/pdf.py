@@ -132,6 +132,8 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
     severe = next(item for item in result.scenarios if item.name == "severe")
     reconciliation = result.debt_reconciliation
     assert reconciliation is not None
+    mechanics = result.facility_mechanics
+    assert mechanics is not None
     borrowing = (
         _money(result.borrowing_base.borrowing_base)
         if result.borrowing_base.borrowing_base is not None
@@ -153,7 +155,8 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
         ],
         "loan_request": [f"借款人申請 {_money(result.case.request.amount)}。"],
         "facility_structure": [
-            f"額度類型 {_zh_status(result.decision.facility_type)}；到期 {result.decision.maturity_years} 年；攤還 {result.decision.amortization_years} 年。"
+            f"統一授信機制：{_zh_status(mechanics.facility_type)}；攤還類型 {_zh_status(mechanics.amortization_type)}；狀態 {_zh_status(mechanics.status)}；到期 {mechanics.maturity_years} 年；攤還 {mechanics.amortization_years or mechanics.maturity_years} 年。",
+            *mechanics.blocking_issues,
         ],
         "loan_purpose": [
             "貸款用途已記錄於合成案件輸入；實際使用前須取得並驗證支持文件。"
@@ -404,6 +407,8 @@ def render_memo_pdf(
     result: AnalysisResult, *, locale: str = "en", detailed: bool = False
 ) -> bytes:
     zh = locale.lower().startswith("zh")
+    mechanics = result.facility_mechanics
+    assert mechanics is not None
     styles = _styles(zh)
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -465,6 +470,14 @@ def render_memo_pdf(
             (
                 "執行建議" if zh else "Executive recommendation",
                 f"{_zh_outcome(result.decision.outcome) if zh else result.decision.outcome}. {('建議額度' if zh else 'Recommended exposure')}: {_money(result.capacity.recommended)}.",
+            ),
+            (
+                "授信機制" if zh else "Facility mechanics",
+                (
+                    f"統一授信機制：{_zh_status(mechanics.facility_type)}；攤還類型 {_zh_status(mechanics.amortization_type)}；狀態 {_zh_status(mechanics.status)}。"
+                    if zh
+                    else f"Resolved mechanics: {mechanics.facility_type}; {mechanics.amortization_type}; status {mechanics.status}."
+                ),
             ),
             (
                 "主要優勢" if zh else "Key strengths",

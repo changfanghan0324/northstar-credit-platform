@@ -12,6 +12,7 @@ from .models import (
     FacilityProtectionView,
     MoneyValue,
     PricingView,
+    ResolvedFacilityMechanics,
     ScorecardView,
 )
 
@@ -25,10 +26,10 @@ def _money(value: int, template: MoneyValue) -> MoneyValue:
 
 
 def calculate_borrowing_base(
-    case: CaseInput, policy: CreditPolicy
+    case: CaseInput, policy: CreditPolicy, mechanics: ResolvedFacilityMechanics
 ) -> BorrowingBaseView:
-    template = case.request.amount
-    if case.request.facility_type != "asset_based":
+    template = mechanics.commitment
+    if mechanics.facility_type != "asset_based":
         return BorrowingBaseView(
             applicable=False,
             status="not_applicable",
@@ -128,12 +129,8 @@ def calculate_borrowing_base(
         + other_eligible
     )
     reductions = ar_reductions + inventory_reductions
-    commitment_minor = case.request.amount.amount_minor
-    outstanding_minor = (
-        case.request.initial_drawn_amount.amount_minor
-        if case.request.initial_drawn_amount is not None
-        else 0
-    )
+    commitment_minor = mechanics.commitment.amount_minor
+    outstanding_minor = mechanics.initial_drawn.amount_minor
     availability_minor = max(0, min(commitment_minor, final_base) - outstanding_minor)
     excess = final_base - commitment_minor
     return BorrowingBaseView(
@@ -155,7 +152,7 @@ def calculate_borrowing_base(
         excess_or_deficiency=_money(excess, template),
         binding_constraint=(
             "borrowing_base"
-            if final_base < case.request.amount.amount_minor
+            if final_base < mechanics.commitment.amount_minor
             else "requested_amount"
         ),
         policy_notice="Illustrative policy advance rates; not a lending commitment.",
@@ -165,14 +162,31 @@ def calculate_borrowing_base(
 def assess_facility(
     case: CaseInput,
     policy: CreditPolicy,
+    mechanics: ResolvedFacilityMechanics,
     borrowing_base: BorrowingBaseView,
     approved_amount: MoneyValue | None = None,
 ) -> FacilityProtectionView:
-    request_minor = case.request.amount.amount_minor
+    if mechanics.status == "blocked":
+        return FacilityProtectionView(
+            score="N/A",
+            category="not_applicable",
+            expected_recovery_category="not_applicable",
+            status="blocked",
+            coverage_requested="N/A",
+            coverage_recommended="N/A",
+            factors={},
+            main_protections=[],
+            main_structural_weaknesses=[
+                "Facility protection is blocked until canonical mechanics are resolved."
+            ],
+            required_improvements=list(mechanics.blocking_issues),
+            documentation_requirements=[],
+        )
+    request_minor = mechanics.commitment.amount_minor
     approved_minor = (
         approved_amount.amount_minor
         if approved_amount is not None
-        else case.request.amount.amount_minor
+        else mechanics.commitment.amount_minor
     )
     if request_minor <= 0 or approved_minor <= 0:
         return FacilityProtectionView(
@@ -196,7 +210,7 @@ def assess_facility(
         borrowing_base.borrowing_base.amount_minor
         if borrowing_base.borrowing_base is not None
         else case.financials.collateral_capacity.amount_minor
-        if case.request.security_type != "unsecured"
+        if mechanics.security_type != "unsecured"
         else 0
     )
     requested_coverage = Decimal(collateral_minor) / Decimal(request_minor)
@@ -208,7 +222,7 @@ def assess_facility(
     factors = {
         "seniority": (
             Decimal(90)
-            if case.request.security_type in {"secured", "asset_based"}
+            if mechanics.security_type in {"secured", "asset_based"}
             else Decimal(40)
         ),
         "collateral": min(Decimal(100), coverage * Decimal(80)),
@@ -220,13 +234,13 @@ def assess_facility(
             else Decimal(40)
         ),
         "amortization": Decimal(85)
-        if (case.request.amortization_years or case.request.maturity_years)
-        < case.request.maturity_years
+        if (mechanics.amortization_years or mechanics.maturity_years)
+        < mechanics.maturity_years
         else Decimal(55),
         "maturity": Decimal(90)
-        if case.request.maturity_years <= 3
+        if mechanics.maturity_years <= 3
         else Decimal(70)
-        if case.request.maturity_years <= 5
+        if mechanics.maturity_years <= 5
         else Decimal(40),
         "covenants": Decimal(75),
         "reporting": Decimal(70),
@@ -264,12 +278,12 @@ def assess_facility(
     protections = ["Senior claim", "Quarterly covenant testing", "Financial reporting"]
     weaknesses: list[str] = []
     improvements: list[str] = []
-    if case.request.security_type == "unsecured":
+    if mechanics.security_type == "unsecured":
         weaknesses.append("No collateral support")
         improvements.append("Maintain tighter leverage and liquidity covenants")
     else:
         protections.append("Collateral security package")
-    if case.request.amortization_years is None:
+    if mechanics.amortization_type == "bullet":
         weaknesses.append("Bullet-style repayment concentration")
         improvements.append("Add scheduled amortization")
     if coverage < Decimal(1):
@@ -299,9 +313,12 @@ def assess_facility(
 
 
 def calculate_pricing(
-    case: CaseInput, policy: CreditPolicy, scorecard: ScorecardView
+    case: CaseInput,
+    policy: CreditPolicy,
+    scorecard: ScorecardView,
+    mechanics: ResolvedFacilityMechanics,
 ) -> PricingView:
-    if scorecard.grade is None:
+    if scorecard.grade is None or mechanics.status == "blocked":
         return PricingView(
             status="blocked",
             reference_base_rate=str(
@@ -323,15 +340,17 @@ def calculate_pricing(
     grade_spread = policy.pricing_grade_spreads_bps[grade]
     tenor_key = (
         "short"
-        if case.request.maturity_years <= 3
+        if mechanics.maturity_years <= 3
         else "medium"
-        if case.request.maturity_years <= 5
+        if mechanics.maturity_years <= 5
         else "long"
     )
     tenor = policy.pricing_tenor_adjustments_bps[tenor_key]
-    security = policy.pricing_security_adjustments_bps[case.request.security_type]
+    security = policy.pricing_security_adjustments_bps[mechanics.security_type]
     amortization_key = (
-        "amortizing" if case.request.amortization_years is not None else "bullet"
+        "amortizing"
+        if mechanics.amortization_type in {"fully_amortizing", "partial"}
+        else "bullet"
     )
     amortization = policy.pricing_amortization_adjustments_bps[amortization_key]
     covenant = policy.pricing_covenant_adjustment_bps if grade >= 6 else 0
@@ -366,7 +385,7 @@ def calculate_pricing(
         indicative_all_in_rate=str(all_in.quantize(Decimal("0.0001"))),
         commitment_fee_bps=(
             policy.pricing_commitment_fee_bps
-            if case.request.facility_type in {"revolver", "asset_based"}
+            if mechanics.facility_type in {"revolver", "asset_based"}
             else None
         ),
         upfront_fee_bps=(

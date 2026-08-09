@@ -90,3 +90,29 @@ Evidence:
 - Final local gate: 122 Python tests, 92.87% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
   mobile skip.
+
+## v6-04 — Unified facility mechanics
+
+Date: 2026-08-08
+Status: implementation complete; phase review complete; production check pending
+
+Decision: resolve one frozen `ResolvedFacilityMechanics` object from the
+explicit request and route it unchanged through capacity, pricing, facility
+protection, all forecast and reverse-stress scenarios, covenants, policy
+checks, decision, memo, UI, and PDF. The resolver blocks the documented
+facility/amortization/security conflicts and exposes typed `blocking_issues`.
+No downstream analysis consumer re-infers facility or security mechanics from
+the raw request.
+
+Evidence:
+
+- `docs/architecture/facility-mechanics-contract.md`
+- Canonical, immutability, conflict-matrix, near-miss, consumer, and bilingual
+  PDF assertions in `tests/unit/test_application_analysis.py` and
+  `tests/integration/test_api_workflow.py`.
+- Claude Opus 5 High initial challenge:
+  `0c40cd29-f5f2-40f8-9315-2fbfd0f101b2` (FAIL; remediated).
+- Claude Opus 5 High re-challenge:
+  `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS pending final green gate).
+- Final local gate: 126 Python tests, 92.94% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and API integration all passed.

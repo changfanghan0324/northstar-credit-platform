@@ -34,7 +34,12 @@ v6-02 through v6-08 are finished.
   alias verified). The exact phase commit is recorded in the release commit
   metadata. Claude Opus 5 High re-challenge `2ee7d0c4-9a06-4350-96af-b067dacd736a`
   (PASS pending final green gate; gate passed below).
-- **v6-04 through v6-08:** pending; no completion claim is made for those
+- **v6-04 — Unified facility mechanics:** production-verified in Vercel
+  deployment `dpl_BjbFua5rfC4wvhBaZ4X1JC4SGqYd` (READY; production alias
+  verified). Phase commit is `v6-04-unify-facility-mechanics`. Claude Opus 5
+  High re-challenge `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS; gate passed
+  below).
+- **v6-05 through v6-08:** pending; no completion claim is made for those
   phases.
 
 ## Verification at release authoring
@@ -55,6 +60,15 @@ v6-02 through v6-08 are finished.
   matched the catalog; six bilingual detailed PDFs returned 200 and exceeded
   1 KB; a transient rate limit on one retry cleared and the final check passed;
   Vercel runtime errors in the last hour: none.
+- v6-04 verification: 126 Python tests passed; total coverage 92.94%; strict
+  Mypy, Ruff, TypeScript, ESLint, and Next production build passed; API
+  integration and Playwright both passed (11 passed, 1 intentional mobile
+  skip). Production smoke after `dpl_BjbFua5rfC4wvhBaZ4X1JC4SGqYd`: English
+  and Traditional Chinese routes, `/health`, `/runtime`, and `/demo-cases`
+  returned 200; all three demo decisions, recommended amounts, and resolved
+  mechanics matched their catalog outputs; six bilingual detailed PDFs
+  returned 200 and exceeded 1 KB; browser UI showed the resolved mechanics
+  lineage panel; Vercel runtime errors in the last hour: none.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

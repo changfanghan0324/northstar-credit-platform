@@ -1848,6 +1848,29 @@ summary:focus-visible {
   font-size: 17px;
   text-transform: capitalize;
 }
+.source-lineage-note {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  border-left: 2px solid var(--copper);
+  background: var(--wash);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.source-lineage-note strong {
+  font-family: var(--serif);
+  font-size: 13px;
+}
+.source-lineage-note span,
+.source-lineage-note code {
+  display: block;
+}
+.source-lineage-note code {
+  color: var(--muted);
+  font-size: 10px;
+}
 .reconciliation-warning {
   display: flex;
   gap: 12px;

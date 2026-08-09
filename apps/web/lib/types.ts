@@ -393,6 +393,7 @@ export type Analysis = {
     security_type: string;
     status: string;
     explanation: string;
+    blocking_issues?: string[];
   } | null;
   scenarios: Array<{
     name: "base" | "downside" | "severe";

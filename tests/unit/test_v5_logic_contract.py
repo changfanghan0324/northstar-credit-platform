@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from northstar_credit_app import analyze_case, resolve_underwriting_financials
+from northstar_credit_app.analysis import _resolve_facility_mechanics
 from northstar_credit_app.demo import load_demo_case
 from northstar_credit_app.facility import calculate_borrowing_base
 from northstar_credit_app.models import (
@@ -462,7 +463,8 @@ def test_partial_schedule_labels_residual_and_abl_availability_is_net_of_drawn()
         "prior_liens": money(0),
     }
     abl = case.model_validate(raw)
-    base = calculate_borrowing_base(abl, load_policy()[0])
+    mechanics = _resolve_facility_mechanics(abl)
+    base = calculate_borrowing_base(abl, load_policy()[0], mechanics)
     assert base.borrowing_base is not None and base.availability is not None
     assert base.borrowing_base.amount_minor == 800_000_000
     assert base.availability.amount_minor == 300_000_000

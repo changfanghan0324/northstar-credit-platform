@@ -136,3 +136,40 @@ Model: `claude-opus-5` (High effort; independent supplied-summary review)
 - Final verification after this challenge: 122 Python tests passed with
   92.87% coverage, strict Mypy/Ruff/format and Next build passed; TypeScript,
   ESLint, and Playwright passed with 11 tests and 1 intentional mobile skip.
+
+## v6-04 — Unified facility mechanics
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Initial challenge
+
+- Session: `0c40cd29-f5f2-40f8-9315-2fbfd0f101b2`
+- Verdict: **FAIL — release blocked pending stronger evidence**.
+- Findings: the single-constructor/pass-through invariant was asserted but not
+  mechanically checked; contradiction coverage was not described as a full
+  matrix; per-consumer propagation and localized PDF/UI evidence were not
+  explicit.
+
+### Codex response
+
+- Froze `ResolvedFacilityMechanics` and nested `MoneyValue`, and made
+  `blocking_issues` an immutable tuple.
+- Added architecture assertions for exactly one resolver construction and no
+  downstream raw-request facility/security inference; mutation attempts now
+  fail.
+- Documented the complete fail-closed conflict matrix and added a two-conflict
+  case plus a supported asset-based/revolver near-miss.
+- Expanded canonical assertions across capacity, pricing, facility protection,
+  scenarios, reverse stress, covenants, policy checks, decision, memo, ABL
+  borrowing base, English/Traditional Chinese PDF, and UI text.
+
+### Re-challenge
+
+- Session: `06d9fdb8-2128-42fc-bb10-37bd96160182`
+- Verdict: **PASS — v6-04 approved pending final green verification gate**.
+- Claude found no release-blocking gap after the immutability, conflict-matrix,
+  per-consumer, and bilingual output evidence was added.
+- Final verification for this phase: 126 Python tests passed, 92.94% coverage,
+  strict Mypy/Ruff/TypeScript/ESLint/Next build passed, and API integration
+  passed.

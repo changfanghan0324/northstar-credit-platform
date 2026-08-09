@@ -103,6 +103,19 @@ function interestShockBasisLabel(value: string, zh: boolean): string {
   };
   return labels[value]?.[zh ? "zh" : "en"] ?? (zh ? "未知壓力基礎" : "Unknown shock basis");
 }
+function facilityMechanicsLabel(value: string, zh: boolean): string {
+  const labels: Record<string, { en: string; zh: string }> = {
+    term_loan: { en: "Term loan", zh: "定期貸款" },
+    revolver: { en: "Revolver", zh: "循環額度" },
+    asset_based: { en: "Asset-based revolver", zh: "資產基礎循環額度" },
+    fully_amortizing: { en: "Fully amortizing", zh: "全額攤還" },
+    partial: { en: "Partial balloon", zh: "部分氣球本金" },
+    bullet: { en: "Bullet", zh: "到期一次償還" },
+    available: { en: "Available", zh: "可使用" },
+    blocked: { en: "Blocked", zh: "已阻擋" },
+  };
+  return labels[value]?.[zh ? "zh" : "en"] ?? value.replaceAll("_", " ");
+}
 function sourceFieldLabel(value: string, zh: boolean): string {
   if (!zh) return value.replaceAll("_", " ");
   return (
@@ -290,6 +303,28 @@ export function FinancialSpreadingPanel({
             </span>
           )}
           <span>{analysis.debt_reconciliation.coverage_basis_notice}</span>
+        </div>
+      )}
+      {analysis.facility_mechanics && (
+        <div className="source-lineage-note">
+          <strong>{zh ? "統一授信機制" : "Resolved facility mechanics"}</strong>
+          <span>
+            {zh
+              ? `狀態：${facilityMechanicsLabel(analysis.facility_mechanics.status, zh)}；類型：${facilityMechanicsLabel(analysis.facility_mechanics.facility_type, zh)}；攤還：${facilityMechanicsLabel(analysis.facility_mechanics.amortization_type, zh)}`
+              : `Status: ${facilityMechanicsLabel(analysis.facility_mechanics.status, zh)}; facility: ${facilityMechanicsLabel(analysis.facility_mechanics.facility_type, zh)}; amortization: ${facilityMechanicsLabel(analysis.facility_mechanics.amortization_type, zh)}`}
+          </span>
+          <span>
+            {zh
+              ? `承諾額度 ${money(analysis.facility_mechanics.commitment, locale, true)}；到期 ${analysis.facility_mechanics.maturity_years} 年；可用期 ${analysis.facility_mechanics.availability_period_years ?? "—"} 年`
+              : `Commitment ${money(analysis.facility_mechanics.commitment, locale, true)}; maturity ${analysis.facility_mechanics.maturity_years} years; availability ${analysis.facility_mechanics.availability_period_years ?? "—"} years`}
+          </span>
+          {(analysis.facility_mechanics.blocking_issues?.length ?? 0) > 0 && (
+            <span role="alert">
+              {zh
+                ? `機制衝突：${analysis.facility_mechanics.blocking_issues?.join("；")}`
+                : `Mechanics conflicts: ${analysis.facility_mechanics.blocking_issues?.join("; ")}`}
+            </span>
+          )}
         </div>
       )}
       {spreading.reconciliation_warnings.length > 0 && (

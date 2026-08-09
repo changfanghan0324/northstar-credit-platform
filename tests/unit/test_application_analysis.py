@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from northstar_credit_app import analyze_case
@@ -25,6 +26,116 @@ def test_reference_case_calculates_golden_ratios_and_capacity() -> None:
     assert result.capacity.recommended.amount_minor == 1_500_000_000
     assert result.capacity.binding_constraints == ["requested_amount"]
     assert result.decision.outcome == "Approve with conditions"
+
+
+def test_resolved_facility_mechanics_are_canonical_across_consumers() -> None:
+    result = analyze_case(load_demo_case("stable-manufacturer"))
+
+    mechanics = result.facility_mechanics
+    assert mechanics is not None
+    assert mechanics.status == "available"
+    assert mechanics.facility_type == "term_loan"
+    assert mechanics.amortization_type == "fully_amortizing"
+    assert result.decision.facility_type == mechanics.facility_type
+    assert result.decision.maturity_years == mechanics.maturity_years
+    assert result.decision.amortization_years == mechanics.amortization_years
+    assert result.capacity.requested == mechanics.commitment
+    assert result.pricing.status == "available"
+    assert result.facility_protection.status == "available"
+    assert result.reverse_stress.status == "available"
+    assert all(
+        item.actual == mechanics.facility_type
+        for item in result.policy_checks
+        if item.key == "facility_restrictions"
+    )
+    assert all(
+        scenario.maturity_test_status in {"pass", "breach", "not_applicable"}
+        for scenario in result.scenarios
+    )
+    assert (
+        "Resolved mechanics: term_loan; fully_amortizing"
+        in result.memo_sections["facility_structure"][0]
+    )
+
+    abl = analyze_case(load_demo_case("cyclical-distributor"))
+    abl_mechanics = abl.facility_mechanics
+    assert abl_mechanics is not None
+    assert abl_mechanics.facility_type == "asset_based"
+    assert abl_mechanics.amortization_type == "revolver"
+    assert abl.borrowing_base.applicable is True
+    assert abl.decision.facility_type == abl_mechanics.facility_type
+    assert any(item.name == "Borrowing-base availability" for item in abl.covenants)
+    assert any(
+        "asset_based" in line.lower()
+        for line in abl.memo_sections["facility_structure"]
+    )
+
+
+def test_conflicting_facility_mechanics_block_all_downstream_decisions() -> None:
+    case = load_demo_case("stable-manufacturer")
+    request = case.request.model_copy(
+        update={
+            "facility_type": "asset_based",
+            "security_type": "asset_based",
+            "amortization_type": "fully_amortizing",
+            "amortization_years": 5,
+        }
+    )
+    result = analyze_case(case.model_copy(update={"request": request}))
+
+    mechanics = result.facility_mechanics
+    assert mechanics is not None
+    assert mechanics.status == "blocked"
+    assert mechanics.blocking_issues
+    assert result.analysis_status == "blocked"
+    assert result.capacity.status == "blocked"
+    assert result.capacity.recommendation_state == "blocked"
+    assert result.pricing.status == "blocked"
+    assert result.facility_protection.status == "blocked"
+    assert result.reverse_stress.status == "blocked"
+    assert result.decision.outcome == "Decline"
+
+
+def test_facility_mechanics_has_one_constructor_and_is_immutable() -> None:
+    source = Path("packages/credit_app/northstar_credit_app/analysis.py").read_text()
+    assert source.count("ResolvedFacilityMechanics(") == 1
+    assert "case.request.facility_type" not in source
+    assert "case.request.security_type" not in source
+
+    mechanics = analyze_case(load_demo_case("stable-manufacturer")).facility_mechanics
+    assert mechanics is not None
+    with pytest.raises((TypeError, ValueError)):
+        mechanics.status = "blocked"  # type: ignore[misc]
+    with pytest.raises((TypeError, ValueError)):
+        mechanics.commitment.amount_minor = 0  # type: ignore[misc]
+
+
+def test_facility_mechanics_conflict_matrix_blocks_and_near_miss_is_available() -> None:
+    case = load_demo_case("stable-manufacturer")
+    conflict_request = case.request.model_copy(
+        update={
+            "facility_type": "asset_based",
+            "security_type": "secured",
+            "amortization_type": "fully_amortizing",
+            "amortization_years": 5,
+        }
+    )
+    conflict = analyze_case(case.model_copy(update={"request": conflict_request}))
+    assert conflict.facility_mechanics is not None
+    assert conflict.facility_mechanics.status == "blocked"
+    assert len(conflict.facility_mechanics.blocking_issues) >= 2
+
+    near_miss_request = case.request.model_copy(
+        update={
+            "facility_type": "asset_based",
+            "security_type": "asset_based",
+            "amortization_type": "revolver",
+            "bullet_percentage": Decimal("1"),
+        }
+    )
+    near_miss = analyze_case(case.model_copy(update={"request": near_miss_request}))
+    assert near_miss.facility_mechanics is not None
+    assert near_miss.facility_mechanics.status == "available"
 
 
 @pytest.mark.parametrize(
