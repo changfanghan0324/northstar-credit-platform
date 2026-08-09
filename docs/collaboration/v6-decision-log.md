@@ -3,7 +3,7 @@
 ## v6-01 — Money scale contract
 
 Date: 2026-08-08
-Status: implementation complete; phase review complete; production check pending
+Status: implementation complete; phase review complete; production verification complete
 
 Decision: normalize `whole`, `thousands`, and `millions` exactly once at the
 browser/import boundary. Store actual USD cents in `MoneyValue.amount_minor`;
@@ -24,6 +24,8 @@ Evidence:
   `606598e7-85f1-4dbe-9add-33b244ee57ac`.
 - Claude Opus 5 High re-challenge PASS:
   `728dc361-bd7d-4459-b287-00894cb99a96`.
+- Production verification: Vercel deployment
+  `dpl_4R2hw9cS9QrzuEu5SuM4Tn6th5vq` READY with the production alias checked.
 
 Follow-ups carried to later v6 work: computed-output safe bounds, broader
 Excel accounting grammar, explicit negative-bound fixture, fixture parity
@@ -32,7 +34,7 @@ assertions, and module-scoped coverage reporting.
 ## v6-02 — Financial lineage and FY/YTD consistency
 
 Date: 2026-08-08
-Status: implementation complete; phase review complete; production check pending
+Status: implementation complete; phase review complete; production verification complete
 
 Decision: make the FY/current-YTD/prior-comparable-YTD window explicit and
 fail-closed. Flows use `FY + Current YTD - Prior Comparable YTD`; point-in-time
@@ -55,11 +57,14 @@ Evidence:
   ESLint, Next build; Playwright 11 passed and 1 intentional mobile skip.
 - Initial Claude challenge: `60d3c93c-0f18-4c8d-a235-bea947f64253` (FAIL).
 - Remediation challenge: `9be6e487-9218-424f-a06c-bf811760802c` (PASS).
+- Production verification: Vercel deployment
+  `dpl_8yQdunYTeqp8Gzd66Zs8863BgKW9` READY; bilingual routes, health/runtime,
+  demo lifecycle, and detailed PDF checks passed.
 
 ## v6-03 — Debt reconciliation and residual treatment
 
 Date: 2026-08-08
-Status: implementation complete; phase review complete; production check pending
+Status: implementation complete; phase review complete; production verification complete
 
 Decision: expose one typed debt-reconciliation object and pass it unchanged to
 leverage, DSCR, capacity, stress, reverse stress, adjustments, maturity, and
@@ -86,15 +91,18 @@ Evidence:
 - Claude Opus 5 High initial challenge:
   `af62da6d-b9e5-41aa-be25-48f3e1dd922b` (FAIL; remediated).
 - Claude Opus 5 High re-challenge:
-  `2ee7d0c4-9a06-4350-96af-b067dacd736a` (PASS pending green gate).
+  `2ee7d0c4-9a06-4350-96af-b067dacd736a` (PASS; final gate passed).
 - Final local gate: 122 Python tests, 92.87% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
   mobile skip.
+- Production verification: Vercel deployment
+  `dpl_8C8MTsWeV9N5fwnjCjTbT4L9SYAw` READY; reconciliation outputs, bilingual
+  PDFs, demo lifecycle, and runtime-error checks passed.
 
 ## v6-04 — Unified facility mechanics
 
 Date: 2026-08-08
-Status: implementation complete; phase review complete; production check pending
+Status: implementation complete; phase review complete; production verification complete
 
 Decision: resolve one frozen `ResolvedFacilityMechanics` object from the
 explicit request and route it unchanged through capacity, pricing, facility
@@ -113,9 +121,12 @@ Evidence:
 - Claude Opus 5 High initial challenge:
   `0c40cd29-f5f2-40f8-9315-2fbfd0f101b2` (FAIL; remediated).
 - Claude Opus 5 High re-challenge:
-  `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS pending final green gate).
+  `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS; final gate passed).
 - Final local gate: 126 Python tests, 92.94% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and API integration all passed.
+- Production verification: Vercel deployment
+  `dpl_BjbFua5rfC4wvhBaZ4X1JC4SGqYd` READY; resolved mechanics appeared in the
+  production UI and bilingual output, with no runtime errors.
 
 ## v6-05 — Bullet exit and maturity testing
 
@@ -198,7 +209,7 @@ Evidence:
   acknowledgement checkbox on desktop and mobile.
 - Claude Opus 5 High initial challenge `821d7747-de3d-4591-9f12-522f635a91d1`
   (FAIL; remediated) and re-challenge `941f9c2e-e94a-4df7-9f03-48a307b23de1`
-  (PASS pending final green gate).
+  (PASS; final gate passed).
 - Final local gate: 133 Python tests, 93.30% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 13 passed / 1 intentional
   mobile skip.

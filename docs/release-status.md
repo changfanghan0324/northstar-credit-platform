@@ -33,7 +33,7 @@ production-verified.
   in Vercel deployment `dpl_8C8MTsWeV9N5fwnjCjTbT4L9SYAw` (READY; production
   alias verified). The exact phase commit is recorded in the release commit
   metadata. Claude Opus 5 High re-challenge `2ee7d0c4-9a06-4350-96af-b067dacd736a`
-  (PASS pending final green gate; gate passed below).
+  (PASS; final gate passed).
 - **v6-04 — Unified facility mechanics:** production-verified in Vercel
   deployment `dpl_BjbFua5rfC4wvhBaZ4X1JC4SGqYd` (READY; production alias
   verified). Phase commit is `v6-04-unify-facility-mechanics`. Claude Opus 5
