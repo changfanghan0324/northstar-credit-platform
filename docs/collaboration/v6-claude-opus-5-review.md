@@ -173,3 +173,31 @@ Model: `claude-opus-5` (High effort; independent supplied-summary review)
 - Final verification for this phase: 126 Python tests passed, 92.94% coverage,
   strict Mypy/Ruff/TypeScript/ESLint/Next build passed, and API integration
   passed.
+
+## v6-05 — Bullet exit and maturity testing
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Challenge
+
+- Session: `ddd0fb7f-cfbc-4d58-84ea-45c575b880a0`
+- Verdict: **PASS — v6-05 approved pending production verification**.
+- No blocking findings. The evidence establishes that the visible three-year
+  table is not the contractual maturity horizon, bullet principal is not
+  silently treated as scheduled amortization, and maturity refinancing and
+  severe no-refinancing outcomes are explicit and tested.
+
+### Non-blocking follow-ups
+
+- Add an equivalent partial-balloon fixture with scheduled amortization and a
+  residual balloon.
+- Add a maturity-at-three-year boundary case to guard visible-table behavior.
+- Add explicit zero/negative EBITDA, zero-headroom, reason-code, numeric PDF
+  formatting, interest-through-maturity, and module-scoped regression tests.
+- Document the intentional mobile Playwright skip beside its existing test
+  rationale.
+
+The challenge was a supplied-summary review and did not inspect the repository
+or production directly. Its verdict is paired with the executable local gate
+and the production smoke check recorded in the release status.

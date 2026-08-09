@@ -7,7 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from northstar_credit_app.models import AnalysisResult, MoneyValue
+from northstar_credit_app.models import AnalysisResult, MoneyValue, ScenarioView
 from reportlab.lib import colors  # type: ignore[import-untyped]
 from reportlab.lib.enums import TA_LEFT  # type: ignore[import-untyped]
 from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
@@ -139,6 +139,19 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
         if result.borrowing_base.borrowing_base is not None
         else "不適用或因缺少輸入而阻擋"
     )
+
+    def maturity_lines(item: ScenarioView) -> list[str]:
+        if item.maturity_year is None:
+            return []
+        balloon = item.balloon_amount
+        exit_ebitda = item.exit_ebitda
+        refi_capacity = item.refinance_capacity
+        refi_headroom = item.refinance_headroom
+        return [
+            f"到期年 {item.maturity_year}；氣球本金 {_money(balloon) if balloon is not None else '不適用'}；到期 EBITDA {_money(exit_ebitda) if exit_ebitda is not None else '不適用'}；退出槓桿 {item.exit_leverage or '不適用'} 倍；再融資能力 {_money(refi_capacity) if refi_capacity is not None else '不適用'}；再融資餘裕 {_money(refi_headroom) if refi_headroom is not None else '不適用'}；無再融資狀態 {_zh_status(item.no_refinancing_status)}。",
+            item.no_refinancing_reason,
+        ]
+
     return {
         "executive_recommendation": [
             f"建議：{_zh_outcome(result.decision.outcome)}；申請額 {_money(result.capacity.requested)}；可支援額度 {_money(result.capacity.recommended)}；債務人評等 {result.scorecard.grade or '已阻擋'}。"
@@ -208,13 +221,16 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
             f"容量狀態 {result.capacity.status}；建議狀態 {result.capacity.recommendation_state}；申請 {_money(result.capacity.requested)}；建議 {_money(result.capacity.recommended)}；約束條件數 {len(result.capacity.binding_constraints)}。"
         ],
         "base_case": [
-            f"首次財務契約違約年度：{base.first_breach_year or '三年內無'}。"
+            f"首次財務契約違約年度：{base.first_breach_year or '三年內無'}。",
+            *maturity_lines(base),
         ],
         "downside_case": [
-            f"首次違約年度：{downside.first_breach_year or '三年內無'}；流動性耗盡年度：{downside.liquidity_exhaustion_year or '三年內無'}。"
+            f"首次違約年度：{downside.first_breach_year or '三年內無'}；流動性耗盡年度：{downside.liquidity_exhaustion_year or '三年內無'}。",
+            *maturity_lines(downside),
         ],
         "severe_case": [
-            f"首次違約年度：{severe.first_breach_year or '三年內無'}；流動性耗盡年度：{severe.liquidity_exhaustion_year or '三年內無'}。"
+            f"首次違約年度：{severe.first_breach_year or '三年內無'}；流動性耗盡年度：{severe.liquidity_exhaustion_year or '三年內無'}。",
+            *maturity_lines(severe),
         ],
         "reverse_stress": [
             f"六個求解器中有 {sum(item.converged for item in result.reverse_stress.solvers)} 個已收斂；未收斂結果不顯示數值。",

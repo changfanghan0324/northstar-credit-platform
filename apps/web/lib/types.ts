@@ -405,6 +405,13 @@ export type Analysis = {
     maturity_test_reason?: string;
     balloon_amount?: Money | null;
     exit_leverage?: string | null;
+    maturity_year?: number | null;
+    exit_ebitda?: Money | null;
+    refinance_capacity?: Money | null;
+    refinance_headroom?: Money | null;
+    no_refinancing_status?: "pass" | "breach" | "not_applicable" | "blocked";
+    no_refinancing_reason?: string;
+    residual_debt?: Money | null;
   }>;
   covenants: Array<{
     name: string;

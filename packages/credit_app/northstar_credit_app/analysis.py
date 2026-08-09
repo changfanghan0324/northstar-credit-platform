@@ -432,6 +432,10 @@ def _currency(value: MoneyValue) -> str:
     return f"{value.currency} {amount:,.2f}"
 
 
+def _currency_optional(value: MoneyValue | None) -> str:
+    return _currency(value) if value is not None else "N/A"
+
+
 def _scaled(amount: Money, factor: Decimal) -> Money:
     value = (Decimal(amount.amount_minor) * factor).quantize(
         Decimal(1), rounding=ROUND_HALF_UP
@@ -931,11 +935,17 @@ def _scenario(
             * assumptions.rate_shock
         )
     existing_principal = debt_reconciliation.selected_scheduled_principal.amount_minor
+    # Keep the visible scenario table at three years, but roll bullet and
+    # partial-balloon structures through contractual maturity so a five-year
+    # balloon cannot appear safe merely because it is outside the table.
+    calculation_horizon = max(
+        3, mechanics.maturity_years if amortization_kind in {"bullet", "partial"} else 3
+    )
     years: list[ScenarioYearView] = []
     first_breach: int | None = None
     first_stress_event: int | None = None
     liquidity_exhaustion: int | None = None
-    for year in range(1, 4):
+    for year in range(1, calculation_horizon + 1):
         beginning_debt = outstanding
         draw_allowed = (
             mechanics.availability_period_years is None
@@ -972,11 +982,9 @@ def _scenario(
                 / Decimal(max(1, amortization_years)),
             )
         elif amortization_kind == "bullet":
-            scheduled_new_principal = (
-                Decimal(estimated_new_balance) * Decimal(mechanics.bullet_percentage)
-                if year >= mechanics.maturity_years
-                else ZERO
-            )
+            # Contractual bullet principal is handled by the explicit maturity
+            # test below, not as scheduled amortization in the annual roll.
+            scheduled_new_principal = ZERO
         else:
             scheduled_new_principal = ZERO
         scheduled_amortization = min(
@@ -1161,39 +1169,94 @@ def _scenario(
                 ),
             )
         )
+    visible_years = years[:3]
     maturity_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
         "not_applicable"
     )
     maturity_reason = "No bullet or partial balloon is present."
     balloon_amount: MoneyValue | None = None
     exit_leverage: str | None = None
+    maturity_year: int | None = None
+    exit_ebitda_money: MoneyValue | None = None
+    refinance_capacity: MoneyValue | None = None
+    refinance_headroom: MoneyValue | None = None
+    no_refinancing_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
+        "not_applicable"
+    )
+    no_refinancing_reason = "No bullet or partial balloon is present."
+    residual_debt: MoneyValue | None = None
     if amortization_kind in {"bullet", "partial"}:
-        horizon = max(mechanics.maturity_years, 3)
+        maturity_year = mechanics.maturity_years
+        horizon = mechanics.maturity_years
+        maturity_row = years[min(mechanics.maturity_years, len(years)) - 1]
         exit_revenue = (
             Decimal(case.financials.revenue.amount_minor)
             * (ONE + assumptions.revenue_growth) ** horizon
         )
         exit_ebitda = exit_revenue * initial_margin
-        balloon_minor = int(
-            (Decimal(commitment) * Decimal(mechanics.bullet_percentage)).quantize(
-                Decimal(1)
+        exit_ebitda_money = _view(
+            _new_money(
+                int(exit_ebitda.quantize(Decimal(1), rounding=ROUND_HALF_UP)),
+                revenue,
             )
         )
-        exit_debt = Decimal(years[-1].ending_debt.amount_minor) + Decimal(balloon_minor)
+        contractual_balloon = int(
+            (Decimal(commitment) * Decimal(mechanics.bullet_percentage)).quantize(
+                Decimal(1), rounding=ROUND_HALF_UP
+            )
+        )
+        balloon_minor = min(
+            maturity_row.ending_debt.amount_minor,
+            max(0, contractual_balloon),
+        )
+        # The balloon is already included in residual debt immediately before
+        # maturity. Exit leverage therefore uses that residual debt once; it
+        # must never add the balloon a second time.
+        exit_debt = Decimal(maturity_row.ending_debt.amount_minor)
         balloon_amount = _view(_new_money(balloon_minor, revenue))
+        residual_debt = maturity_row.ending_debt
         if exit_ebitda <= 0:
             maturity_status = "blocked"
             maturity_reason = "Exit EBITDA is not positive; maturity refinance capacity cannot be tested."
+            no_refinancing_status = "blocked"
+            no_refinancing_reason = (
+                "Exit EBITDA is not positive; no-refinancing capacity is blocked."
+            )
         else:
             exit_ratio = exit_debt / exit_ebitda
             exit_leverage = str(exit_ratio.quantize(Decimal("0.0001")))
+            maximum_exit_debt = int(
+                (exit_ebitda * policy.maximum_leverage).quantize(
+                    Decimal(1), rounding=ROUND_HALF_UP
+                )
+            )
+            post_balloon_debt = max(
+                0, maturity_row.ending_debt.amount_minor - balloon_minor
+            )
+            refinance_capacity_minor = max(0, maximum_exit_debt - post_balloon_debt)
+            refinance_capacity = _view(_new_money(refinance_capacity_minor, revenue))
+            refinance_headroom = _view(
+                _new_money(refinance_capacity_minor - balloon_minor, revenue)
+            )
             maturity_status = (
-                "pass" if exit_ratio <= policy.maximum_leverage else "breach"
+                "pass" if refinance_capacity_minor >= balloon_minor else "breach"
             )
             maturity_reason = (
-                "Balloon repayment is within policy exit leverage capacity."
+                "Balloon repayment is within exit refinance capacity and policy leverage headroom."
                 if maturity_status == "pass"
-                else "Balloon repayment exceeds policy exit leverage capacity; refinancing or additional support is required."
+                else "Balloon repayment exceeds exit refinance capacity; additional support or a policy exception is required."
+            )
+            no_refinancing_cash = maturity_row.ending_cash.amount_minor - balloon_minor
+            no_refinancing_status = (
+                "pass"
+                if no_refinancing_cash
+                >= case.financials.minimum_operating_cash.amount_minor
+                else "breach"
+            )
+            no_refinancing_reason = (
+                "Balloon can be repaid from cash while preserving minimum operating cash."
+                if no_refinancing_status == "pass"
+                else "Severe no-refinancing case exhausts cash below minimum operating cash."
             )
     if (
         debt_reconciliation.residual_maturity_status == "unknown"
@@ -1206,7 +1269,7 @@ def _scenario(
         )
     return ScenarioView(
         name=cast(Literal["base", "downside", "severe"], name),
-        years=years,
+        years=visible_years,
         first_breach_year=first_breach,
         first_stress_event_year=first_stress_event,
         liquidity_exhaustion_year=liquidity_exhaustion,
@@ -1214,6 +1277,13 @@ def _scenario(
         maturity_test_reason=maturity_reason,
         balloon_amount=balloon_amount,
         exit_leverage=exit_leverage,
+        maturity_year=maturity_year,
+        exit_ebitda=exit_ebitda_money,
+        refinance_capacity=refinance_capacity,
+        refinance_headroom=refinance_headroom,
+        no_refinancing_status=no_refinancing_status,
+        no_refinancing_reason=no_refinancing_reason,
+        residual_debt=residual_debt,
     )
 
 
@@ -2377,6 +2447,14 @@ def analyze_case(
         ],
         "base_case": [
             f"First covenant breach year: {base_scenario.first_breach_year or 'none in forecast'}.",
+            *(
+                [
+                    f"Maturity year {base_scenario.maturity_year}; balloon {_currency_optional(base_scenario.balloon_amount)}; exit EBITDA {_currency_optional(base_scenario.exit_ebitda)}; exit leverage {base_scenario.exit_leverage or 'N/M'}x; refinance capacity {_currency_optional(base_scenario.refinance_capacity)}; refinance headroom {_currency_optional(base_scenario.refinance_headroom)}; no-refinancing {base_scenario.no_refinancing_status}.",
+                    base_scenario.no_refinancing_reason,
+                ]
+                if base_scenario.maturity_year is not None
+                else []
+            ),
             *[
                 f"Year {year.year}: revenue {_currency(year.revenue)}; EBITDA {_currency(year.adjusted_ebitda)}; DSCR {year.dscr or 'N/M'}x; ending cash {_currency(year.ending_cash)}."
                 for year in base_scenario.years
@@ -2384,6 +2462,14 @@ def analyze_case(
         ],
         "downside_case": [
             f"First covenant breach year: {downside.first_breach_year or 'none in forecast'}; liquidity exhaustion year {downside.liquidity_exhaustion_year or 'none in forecast'}.",
+            *(
+                [
+                    f"Maturity year {downside.maturity_year}; balloon {_currency_optional(downside.balloon_amount)}; exit EBITDA {_currency_optional(downside.exit_ebitda)}; exit leverage {downside.exit_leverage or 'N/M'}x; refinance capacity {_currency_optional(downside.refinance_capacity)}; refinance headroom {_currency_optional(downside.refinance_headroom)}; no-refinancing {downside.no_refinancing_status}.",
+                    downside.no_refinancing_reason,
+                ]
+                if downside.maturity_year is not None
+                else []
+            ),
             *[
                 f"Year {year.year}: revenue {_currency(year.revenue)}; EBITDA {_currency(year.adjusted_ebitda)}; DSCR {year.dscr or 'N/M'}x; cash shortfall {_currency(year.cash_shortfall)}."
                 for year in downside.years
@@ -2391,6 +2477,14 @@ def analyze_case(
         ],
         "severe_case": [
             f"First covenant breach year: {severe.first_breach_year or 'none in forecast'}; liquidity exhaustion year {severe.liquidity_exhaustion_year or 'none in forecast'}.",
+            *(
+                [
+                    f"Maturity year {severe.maturity_year}; balloon {_currency_optional(severe.balloon_amount)}; exit EBITDA {_currency_optional(severe.exit_ebitda)}; exit leverage {severe.exit_leverage or 'N/M'}x; refinance capacity {_currency_optional(severe.refinance_capacity)}; refinance headroom {_currency_optional(severe.refinance_headroom)}; no-refinancing {severe.no_refinancing_status}.",
+                    severe.no_refinancing_reason,
+                ]
+                if severe.maturity_year is not None
+                else []
+            ),
             *[
                 f"Year {year.year}: ending debt {_currency(year.ending_debt)}; ending cash {_currency(year.ending_cash)}; refinancing need {_currency(year.refinancing_need)}; unpaid debt service {_currency(year.unpaid_debt_service)}."
                 for year in severe.years

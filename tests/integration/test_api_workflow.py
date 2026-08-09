@@ -324,3 +324,51 @@ def test_partial_debt_reconciliation_residual_is_visible_in_memo_and_pdf() -> No
         assert "Debt reconciliation: reconciled" in text
         assert "Unscheduled residual debt" in text
         assert "maturity status unknown" in text
+
+
+def test_five_year_bullet_maturity_and_no_refinancing_are_visible_in_bilingual_pdf() -> (
+    None
+):
+    with TestClient(app) as client:
+        owner = {"X-Northstar-Session": f"integration-bullet-exit-{uuid4()}"}
+        template = client.post(
+            "/demo-cases/stable-manufacturer/open", headers=owner
+        ).json()["input"]
+        template["slug"] = "integration-five-year-bullet"
+        template["request"].update(
+            {
+                "amount": {
+                    "amount_minor": 2_500_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "amortization_type": "bullet",
+                "amortization_years": None,
+                "maturity_years": 5,
+                "bullet_percentage": "1",
+            }
+        )
+        created = client.post("/cases", headers=owner, json=template)
+        assert created.status_code == 200
+        case_id = created.json()["id"]
+        analyzed = client.post(f"/cases/{case_id}/analyze", headers=owner)
+        assert analyzed.status_code == 200
+        analysis = analyzed.json()
+        severe = next(
+            item for item in analysis["scenarios"] if item["name"] == "severe"
+        )
+        assert severe["maturity_year"] == 5
+        assert severe["balloon_amount"]["amount_minor"] == 2_500_000_000
+        assert severe["maturity_test_status"] == "breach"
+        assert severe["no_refinancing_status"] == "breach"
+        for locale, expected_text in (("en", "Maturity year 5"), ("zh-TW", "到期年 5")):
+            pdf = client.get(
+                f"/cases/{case_id}/memo.pdf?locale={locale}&detail=detailed",
+                headers=owner,
+            )
+            assert pdf.status_code == 200
+            text = "\n".join(
+                page.extract_text() or ""
+                for page in PdfReader(BytesIO(pdf.content)).pages
+            )
+            assert expected_text in text

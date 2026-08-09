@@ -39,7 +39,12 @@ v6-02 through v6-08 are finished.
   verified). Phase commit is `v6-04-unify-facility-mechanics`. Claude Opus 5
   High re-challenge `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS; gate passed
   below).
-- **v6-05 through v6-08:** pending; no completion claim is made for those
+- **v6-05 — Bullet exit and maturity tests:** production-verified in Vercel
+  deployment `dpl_3dDHFQgysjjeMehpo2XpLZmf4XxE` (READY; production aliases
+  verified). Phase commit is `v6-05-add-bullet-exit-tests`. Claude Opus 5
+  High challenge `ddd0fb7f-cfbc-4d58-84ea-45c575b880a0` (PASS; no blocking
+  findings).
+- **v6-06 through v6-08:** pending; no completion claim is made for those
   phases.
 
 ## Verification at release authoring
@@ -69,6 +74,14 @@ v6-02 through v6-08 are finished.
   mechanics matched their catalog outputs; six bilingual detailed PDFs
   returned 200 and exceeded 1 KB; browser UI showed the resolved mechanics
   lineage panel; Vercel runtime errors in the last hour: none.
+- v6-05 verification: 128 Python tests passed; total coverage 93.03%; strict
+  Mypy, Ruff, TypeScript, ESLint, and Next production build passed; Playwright
+  passed 11 tests with 1 intentional mobile skip. Production smoke covered
+  English and Traditional Chinese routes, `/health`, `/runtime`, and
+  `/demo-cases`, all three demo outcomes and mechanics, six detailed bilingual
+  PDFs, and a clean Vercel runtime-error check. The five-year bullet maturity
+  fields and severe no-refinancing outcome are covered by local unit and API
+  integration tests.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

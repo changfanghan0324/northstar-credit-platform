@@ -953,6 +953,15 @@ class ScenarioView(ContractModel):
     maturity_test_reason: str = ""
     balloon_amount: MoneyValue | None = None
     exit_leverage: str | None = None
+    maturity_year: int | None = None
+    exit_ebitda: MoneyValue | None = None
+    refinance_capacity: MoneyValue | None = None
+    refinance_headroom: MoneyValue | None = None
+    no_refinancing_status: Literal["pass", "breach", "not_applicable", "blocked"] = (
+        "not_applicable"
+    )
+    no_refinancing_reason: str = ""
+    residual_debt: MoneyValue | None = None
 
 
 class CovenantView(ContractModel):

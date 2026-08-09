@@ -116,3 +116,31 @@ Evidence:
   `06d9fdb8-2128-42fc-bb10-37bd96160182` (PASS pending final green gate).
 - Final local gate: 126 Python tests, 92.94% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and API integration all passed.
+
+## v6-05 — Bullet exit and maturity testing
+
+Date: 2026-08-08
+Status: implementation complete; phase review complete; production verification complete
+
+Decision: keep the visible scenario table at three years while rolling every
+bullet and partial-balloon facility through its contractual maturity. The
+contractual balloon is handled by an explicit maturity test rather than
+scheduled amortization. Each applicable scenario exposes maturity year,
+balloon, residual debt, exit EBITDA/leverage, refinance capacity/headroom, and
+an independent severe no-refinancing cash test. A maturity breach is determined
+by whether the balloon fits within policy refinance capacity after residual
+debt, and the no-refinancing case requires cash to remain above minimum
+operating cash after the balloon.
+
+Evidence:
+
+- `docs/architecture/bullet-exit-contract.md`
+- Five-year 100% bullet unit test covering hidden maturity roll-forward,
+  balloon, exit metrics, residual debt, refinance headroom, and severe
+  maturity/no-refinancing breaches.
+- API integration test covering English and Traditional Chinese detailed PDFs.
+- Claude Opus 5 High challenge `ddd0fb7f-cfbc-4d58-84ea-45c575b880a0`
+  (PASS; non-blocking follow-ups logged in the review document).
+- Final local gate: 128 Python tests, 93.03% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
+  mobile skip.

@@ -1470,6 +1470,61 @@ function Stress({
           ),
         )}
       </div>
+      {a.scenarios.some((scenario) => scenario.maturity_year != null) && (
+        <article className="panel maturity-test-panel">
+          <h3>{zh ? "氣球本金到期測試" : "Bullet exit and maturity test"}</h3>
+          <p className="muted">
+            {zh
+              ? "即使到期超過三年顯示表，也會滾動至契約到期並測試再融資與無再融資情境。"
+              : "The model rolls beyond the three-year display through contractual maturity and tests refinancing and no-refinancing cases."}
+          </p>
+          <div className="maturity-test-grid">
+            {a.scenarios.map((scenario) =>
+              scenario.maturity_year == null ? null : (
+                <section key={scenario.name}>
+                  <strong>{scenarioName(scenario.name, zh)}</strong>
+                  <dl>
+                    <div>
+                      <dt>{zh ? "到期年" : "Maturity year"}</dt>
+                      <dd>{scenario.maturity_year}</dd>
+                    </div>
+                    <div>
+                      <dt>{zh ? "氣球本金" : "Balloon"}</dt>
+                      <dd>
+                        {scenario.balloon_amount
+                          ? money(scenario.balloon_amount, locale, true)
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{zh ? "退出槓桿" : "Exit leverage"}</dt>
+                      <dd>{scenario.exit_leverage ?? "—"}x</dd>
+                    </div>
+                    <div>
+                      <dt>{zh ? "再融資餘裕" : "Refinance headroom"}</dt>
+                      <dd>
+                        {scenario.refinance_headroom
+                          ? money(scenario.refinance_headroom, locale, true)
+                          : "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{zh ? "無再融資" : "No refinancing"}</dt>
+                      <dd>
+                        {uiStatus(scenario.no_refinancing_status ?? "not_applicable", zh)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <span className={`status ${scenario.maturity_test_status}`}>
+                    {uiStatus(scenario.maturity_test_status ?? "not_applicable", zh)}
+                  </span>
+                  <p>{scenario.no_refinancing_reason}</p>
+                </section>
+              ),
+            )}
+          </div>
+        </article>
+      )}
       <article className="panel scenario-edit">
         <h3>{zh ? "編輯情境假設" : "Edit scenario assumptions"}</h3>
         <div className="scenario-editor">

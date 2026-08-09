@@ -688,3 +688,42 @@ def test_rate_decision_and_bullet_exit_are_explicit() -> None:
     assert result.facility_mechanics is not None
     assert result.facility_mechanics.amortization_type == "partial"
     assert result.scenarios[0].maturity_test_status in {"pass", "breach", "blocked"}
+
+
+def test_five_year_bullet_rolls_through_exit_and_no_refinancing_case() -> None:
+    case = load_demo_case("stable-manufacturer")
+    request = case.request.model_copy(
+        update={
+            "amount": money(2_500_000_000),
+            "amortization_type": "bullet",
+            "amortization_years": None,
+            "maturity_years": 5,
+            "bullet_percentage": Decimal("1"),
+        }
+    )
+    result = analyze_case(case.model_copy(update={"request": request}))
+
+    base, downside, severe = result.scenarios
+    for scenario in result.scenarios:
+        assert len(scenario.years) == 3
+        assert scenario.maturity_year == 5
+        assert scenario.balloon_amount is not None
+        assert scenario.balloon_amount.amount_minor == 2_500_000_000
+        assert (
+            scenario.exit_ebitda is not None and scenario.exit_ebitda.amount_minor > 0
+        )
+        assert scenario.exit_leverage is not None
+        assert scenario.refinance_capacity is not None
+        assert scenario.refinance_headroom is not None
+        assert scenario.residual_debt is not None
+        assert scenario.no_refinancing_status in {"pass", "breach"}
+
+    assert base.maturity_test_status == "pass"
+    assert base.no_refinancing_status == "pass"
+    assert downside.maturity_test_status == "pass"
+    assert severe.maturity_test_status == "breach"
+    assert severe.no_refinancing_status == "breach"
+    assert "no-refinancing" in severe.no_refinancing_reason.lower()
+    assert any(
+        "Maturity year 5" in line for line in result.memo_sections["severe_case"]
+    )
