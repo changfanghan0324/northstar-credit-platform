@@ -29,12 +29,20 @@ v6-02 through v6-08 are finished.
   Vercel deployment `dpl_8yQdunYTeqp8Gzd66Zs8863BgKW9` (READY; production
   alias verified). Commit: `v6-02-fix-financial-lineage`. Claude Opus 5 High
   remediation challenge `9be6e487-9218-424f-a06c-bf811760802c` (PASS).
-- **v6-03 through v6-08:** pending; no completion claim is made for those
+- **v6-03 — Debt reconciliation and residual treatment:** production-verified
+  in Vercel deployment `dpl_8C8MTsWeV9N5fwnjCjTbT4L9SYAw` (READY; production
+  alias verified). The exact phase commit is recorded in the release commit
+  metadata. Claude Opus 5 High re-challenge `2ee7d0c4-9a06-4350-96af-b067dacd736a`
+  (PASS pending final green gate; gate passed below).
+- **v6-04 through v6-08:** pending; no completion claim is made for those
   phases.
 
 ## Verification at release authoring
 
 - v6-02 verification: 113 Python tests passed; total coverage 92.83%.
+- v6-03 verification: 122 Python tests passed; total coverage 92.87%.
+  The gate added reconciliation, tolerance, partial residual, conservative
+  aggregate/partial stress, currency, and bilingual memo/PDF tests.
 - Ruff, strict Mypy, TypeScript, ESLint, and Next.js production build passed;
   unrelated generated `.next/* 2.ts` duplicates were temporarily excluded and
   restored without deleting user files.
@@ -42,6 +50,11 @@ v6-02 through v6-08 are finished.
   and Traditional Chinese routes, `/health`, `/runtime`, and `/demo-cases`
   returned 200; all three demo opens matched expected outcomes and amounts;
   six detailed PDFs returned 200; Vercel runtime errors in the last hour: none.
+- v6-03 production smoke: `/`, `/zh-TW/`, `/health`, `/runtime`, and
+  `/demo-cases` returned 200; all three demo outcomes and recommended amounts
+  matched the catalog; six bilingual detailed PDFs returned 200 and exceeded
+  1 KB; a transient rate limit on one retry cleared and the final check passed;
+  Vercel runtime errors in the last hour: none.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

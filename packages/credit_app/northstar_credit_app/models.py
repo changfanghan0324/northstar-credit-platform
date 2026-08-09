@@ -41,6 +41,13 @@ SourceAuthority = Literal[
     "blocked",
 ]
 
+DebtSource = Literal[
+    "balance_sheet_aggregate",
+    "instrument_schedule",
+    "partial_schedule_with_residual",
+    "blocked_mismatch",
+]
+
 
 class BorrowerInput(ContractModel):
     legal_name: str
@@ -112,6 +119,7 @@ class DebtInstrumentInput(ContractModel):
     secured: bool = False
     seniority: str = "Senior"
     collateral: str = "None"
+    schedule_completeness: Literal["complete", "partial", "unspecified"] = "unspecified"
 
     @model_validator(mode="after")
     def validate_debt(self) -> DebtInstrumentInput:
@@ -638,6 +646,7 @@ class CapacityConstraintView(ContractModel):
 
 class CapacityView(ContractModel):
     status: Literal["available", "blocked"] = "available"
+    recommendation_state: Literal["calculated", "blocked"] = "calculated"
     underwritten_rate: str | None = None
     requested: MoneyValue
     leverage: MoneyValue
@@ -778,6 +787,18 @@ class DebtReconciliationView(ContractModel):
     """Reconciles balance-sheet debt to instrument schedule debt on one basis."""
 
     status: Literal["reconciled", "immaterial_difference", "blocked", "aggregate_mode"]
+    selected_source: DebtSource
+    selected_debt: MoneyValue
+    selected_scheduled_principal: MoneyValue
+    selected_interest: MoneyValue
+    selected_interest_source: Literal["reported_interest", "implied_interest"]
+    floating_principal: MoneyValue
+    interest_shock_basis: Literal[
+        "instrument_rate_type",
+        "aggregate_conservative",
+        "partial_conservative_residual",
+        "reported_aggregate",
+    ]
     balance_sheet_gross_debt: MoneyValue
     instrument_gross_debt: MoneyValue | None
     scheduled_principal: MoneyValue | None
@@ -785,13 +806,37 @@ class DebtReconciliationView(ContractModel):
     reported_interest: MoneyValue
     difference: MoneyValue | None
     tolerance: MoneyValue
+    interest_difference: MoneyValue | None = None
+    interest_tolerance: MoneyValue | None = None
     explanation: str
-    leverage_source: str
-    stress_source: str
-    maturity_source: str
+    leverage_source: DebtSource
+    stress_source: DebtSource
+    maturity_source: DebtSource
     aggregate_mode: bool = False
     coverage_basis_notice: str = ""
     residual_debt: MoneyValue | None = None
+    residual_maturity_year: int | None = None
+    residual_maturity_status: Literal["known", "unknown", "not_applicable"] = (
+        "not_applicable"
+    )
+
+    @model_validator(mode="after")
+    def validate_selected_source(self) -> DebtReconciliationView:
+        if {
+            self.leverage_source,
+            self.stress_source,
+            self.maturity_source,
+        } != {self.selected_source}:
+            raise ValueError(
+                "leverage, stress, and maturity must use the selected debt source"
+            )
+        if (
+            self.residual_debt is not None
+            and self.residual_maturity_status == "known"
+            and self.residual_maturity_year is None
+        ):
+            raise ValueError("known residual maturity requires residual_maturity_year")
+        return self
 
 
 class ResolvedFacilityMechanics(ContractModel):

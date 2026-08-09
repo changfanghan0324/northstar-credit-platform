@@ -289,6 +289,7 @@ def test_debt_mismatch_blocks_decision_and_itemized_cfads_flows_to_capacity() ->
         annual_rate=Decimal("0.06"),
         scheduled_amortization=money(10_000_000),
         maturity_year=5,
+        schedule_completeness="complete",
     )
     result = analyze_case(case.model_copy(update={"debt_instruments": [instrument]}))
     assert result.debt_reconciliation is not None
@@ -297,22 +298,132 @@ def test_debt_mismatch_blocks_decision_and_itemized_cfads_flows_to_capacity() ->
     assert result.pricing.status == "blocked"
 
 
+def test_reconciled_debt_source_drives_leverage_dscr_stress_and_memo() -> None:
+    case = load_demo_case("stable-manufacturer")
+    total_debt = sum(
+        getattr(case.financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    aggregate = analyze_case(case)
+    assert aggregate.debt_reconciliation is not None
+    assert aggregate.debt_reconciliation.status == "aggregate_mode"
+    assert aggregate.debt_reconciliation.selected_source == "balance_sheet_aggregate"
+    assert aggregate.debt_reconciliation.selected_debt.amount_minor == total_debt
+    assert aggregate.debt_reconciliation.selected_scheduled_principal.amount_minor == (
+        case.financials.scheduled_principal.amount_minor
+    )
+    schedule = DebtInstrumentInput(
+        name="Reconciled aggregate instrument",
+        principal=money(total_debt),
+        annual_rate=Decimal("0.08"),
+        scheduled_amortization=case.financials.scheduled_principal,
+        maturity_year=3,
+        schedule_completeness="complete",
+    )
+    result = analyze_case(case.model_copy(update={"debt_instruments": [schedule]}))
+    reconciliation = result.debt_reconciliation
+    assert reconciliation is not None
+    assert reconciliation.status == "reconciled"
+    assert reconciliation.selected_source == "instrument_schedule"
+    assert reconciliation.selected_debt.amount_minor == total_debt
+    assert (
+        reconciliation.selected_scheduled_principal.amount_minor
+        == case.financials.scheduled_principal.amount_minor
+    )
+    assert reconciliation.selected_interest.amount_minor == (total_debt * 8 // 100)
+    assert reconciliation.leverage_source == reconciliation.stress_source
+    assert reconciliation.stress_source == reconciliation.maturity_source
+    assert result.metrics["dscr"].value == aggregate.metrics["dscr"].value
+    assert (
+        result.metrics["interest_coverage"].value
+        == aggregate.metrics["interest_coverage"].value
+    )
+    assert reconciliation.coverage_basis_notice.endswith("instrument_schedule.")
+    assert "Debt reconciliation: reconciled" in " ".join(
+        result.memo_sections["capital_structure"]
+    )
+
+
+def test_material_debt_interest_mismatch_blocks_all_debt_service_outputs() -> None:
+    case = load_demo_case("stable-manufacturer")
+    total_debt = sum(
+        getattr(case.financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    schedule = DebtInstrumentInput(
+        name="Interest mismatch",
+        principal=money(total_debt),
+        annual_rate=Decimal("0.10"),
+        scheduled_amortization=case.financials.scheduled_principal,
+        maturity_year=3,
+        schedule_completeness="complete",
+    )
+    result = analyze_case(case.model_copy(update={"debt_instruments": [schedule]}))
+    assert result.debt_reconciliation is not None
+    assert result.debt_reconciliation.status == "blocked"
+    assert result.analysis_status == "blocked"
+    assert result.metrics["dscr"].status == "blocked"
+    assert result.capacity.recommended.amount_minor == 0
+    assert result.capacity.recommendation_state == "blocked"
+    assert result.reverse_stress.status == "blocked"
+    assert all(
+        item.status == "blocked"
+        for item in result.covenants
+        if item.name == "Minimum DSCR"
+    )
+
+
 def test_partial_schedule_labels_residual_and_abl_availability_is_net_of_drawn() -> (
     None
 ):
     case = load_demo_case("stable-manufacturer")
+    aggregate_result = analyze_case(case)
     instrument = DebtInstrumentInput(
         name="Long-term schedule only",
         principal=case.financials.long_term_debt,
         annual_rate=Decimal("0.06"),
         scheduled_amortization=money(100_000_000),
         maturity_year=5,
+        schedule_completeness="partial",
     )
     result = analyze_case(case.model_copy(update={"debt_instruments": [instrument]}))
     assert result.debt_reconciliation is not None
     assert result.debt_reconciliation.aggregate_mode is True
+    assert result.debt_reconciliation.status == "reconciled"
+    assert (
+        result.debt_reconciliation.selected_source == "partial_schedule_with_residual"
+    )
+    assert result.debt_reconciliation.selected_debt.amount_minor == (
+        case.financials.short_term_borrowings.amount_minor
+        + case.financials.current_maturities.amount_minor
+        + case.financials.long_term_debt.amount_minor
+        + case.financials.finance_leases.amount_minor
+    )
     assert result.debt_reconciliation.residual_debt is not None
+    assert result.debt_reconciliation.residual_debt.amount_minor == 1_500_000_000
+    assert result.debt_reconciliation.residual_maturity_status == "unknown"
+    assert result.debt_reconciliation.selected_scheduled_principal.amount_minor == (
+        case.financials.scheduled_principal.amount_minor
+    )
+    assert result.metrics["dscr"].value == aggregate_result.metrics["dscr"].value
     assert "residual" in result.debt_reconciliation.coverage_basis_notice
+    assert all(
+        scenario.maturity_test_status == "blocked" for scenario in result.scenarios
+    )
+    assert any(
+        "Unscheduled residual debt" in line
+        for line in result.memo_sections["debt_maturity_schedule"]
+    )
 
     raw = case.model_dump(mode="python")
     raw["request"].update(
@@ -356,6 +467,215 @@ def test_partial_schedule_labels_residual_and_abl_availability_is_net_of_drawn()
     assert base.borrowing_base.amount_minor == 800_000_000
     assert base.availability.amount_minor == 300_000_000
     assert base.commitment is not None and base.outstanding is not None
+
+
+def test_unspecified_or_overlarge_partial_schedule_blocks_instead_of_guessing() -> None:
+    case = load_demo_case("stable-manufacturer")
+    unspecified = DebtInstrumentInput(
+        name="Unscoped debt",
+        principal=case.financials.long_term_debt,
+        annual_rate=Decimal("0.06"),
+        scheduled_amortization=money(100_000_000),
+        maturity_year=5,
+    )
+    unspecified_result = analyze_case(
+        case.model_copy(update={"debt_instruments": [unspecified]})
+    )
+    assert unspecified_result.debt_reconciliation is not None
+    assert unspecified_result.debt_reconciliation.status == "blocked"
+    assert unspecified_result.debt_reconciliation.selected_source == "blocked_mismatch"
+
+    overlarge = unspecified.model_copy(
+        update={
+            "schedule_completeness": "partial",
+            "principal": case.financials.long_term_debt,
+        }
+    )
+    overlarge_financials = case.financials.model_copy(
+        update={
+            "short_term_borrowings": money(2_500_000_000),
+            "current_liabilities": money(3_000_000_000),
+            "total_liabilities": money(8_500_000_000),
+            "total_assets": money(9_000_000_000),
+            "equity": money(500_000_000),
+        }
+    )
+    overlarge_result = analyze_case(
+        case.model_copy(
+            update={
+                "financials": overlarge_financials,
+                "debt_instruments": [overlarge],
+            }
+        )
+    )
+    assert overlarge_result.debt_reconciliation is not None
+    assert overlarge_result.debt_reconciliation.status == "blocked"
+    assert "20%" in overlarge_result.debt_reconciliation.explanation
+
+
+def test_debt_tolerance_boundary_is_explicit_and_asymmetric() -> None:
+    case = load_demo_case("stable-manufacturer")
+    total_debt = sum(
+        getattr(case.financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    # 0.25% of balance-sheet debt is the exact missing-debt tolerance.
+    boundary_principal = total_debt - int(total_debt * Decimal("0.0025"))
+    just_over = boundary_principal - 1
+
+    def result_for(principal_minor: int):
+        rate = Decimal(case.financials.cash_interest.amount_minor) / Decimal(
+            principal_minor
+        )
+        instrument = DebtInstrumentInput(
+            name="Tolerance test",
+            principal=money(principal_minor),
+            annual_rate=rate,
+            scheduled_amortization=case.financials.scheduled_principal,
+            maturity_year=3,
+            schedule_completeness="complete",
+        )
+        return analyze_case(case.model_copy(update={"debt_instruments": [instrument]}))
+
+    assert result_for(boundary_principal).debt_reconciliation.status == (
+        "immaterial_difference"
+    )
+    assert result_for(just_over).debt_reconciliation.status == "blocked"
+
+
+def test_fixed_rate_schedule_is_not_repriced_by_rate_shock() -> None:
+    case = load_demo_case("stable-manufacturer")
+    total_debt = sum(
+        getattr(case.financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    instrument = DebtInstrumentInput(
+        name="Fixed debt",
+        principal=money(total_debt),
+        annual_rate=Decimal("0.08"),
+        rate_type="fixed",
+        scheduled_amortization=case.financials.scheduled_principal,
+        maturity_year=3,
+        schedule_completeness="complete",
+    )
+    shocked_scenarios = {
+        key: value.model_copy(update={"rate_shock": Decimal("0.20")})
+        for key, value in case.scenarios.items()
+    }
+    base_result = analyze_case(
+        case.model_copy(update={"debt_instruments": [instrument]})
+    )
+    shocked_result = analyze_case(
+        case.model_copy(
+            update={
+                "debt_instruments": [instrument],
+                "scenarios": shocked_scenarios,
+            }
+        )
+    )
+    assert (
+        shocked_result.debt_reconciliation.interest_shock_basis
+        == "instrument_rate_type"
+    )
+    assert (
+        shocked_result.scenarios[0].years[0].interest_coverage
+        == base_result.scenarios[0].years[0].interest_coverage
+    )
+
+
+def test_rate_shock_is_non_vacuous_for_aggregate_and_partial_debt() -> None:
+    case = load_demo_case("stable-manufacturer")
+    shocked_scenarios = {
+        key: value.model_copy(update={"rate_shock": Decimal("0.20")})
+        for key, value in case.scenarios.items()
+    }
+    aggregate = analyze_case(case)
+    aggregate_shocked = analyze_case(
+        case.model_copy(update={"scenarios": shocked_scenarios})
+    )
+    assert aggregate.debt_reconciliation.interest_shock_basis == (
+        "aggregate_conservative"
+    )
+    assert aggregate.debt_reconciliation.floating_principal.amount_minor == (
+        aggregate.debt_reconciliation.selected_debt.amount_minor
+    )
+    assert (
+        aggregate_shocked.scenarios[0].years[0].interest_coverage
+        != aggregate.scenarios[0].years[0].interest_coverage
+    )
+
+    partial_instrument = DebtInstrumentInput(
+        name="Floating long-term schedule",
+        principal=money(case.financials.long_term_debt.amount_minor),
+        annual_rate=Decimal("0.08"),
+        rate_type="floating",
+        scheduled_amortization=money(900_000_000),
+        maturity_year=5,
+        schedule_completeness="partial",
+    )
+    partial = analyze_case(
+        case.model_copy(update={"debt_instruments": [partial_instrument]})
+    )
+    partial_shocked = analyze_case(
+        case.model_copy(
+            update={
+                "debt_instruments": [partial_instrument],
+                "scenarios": shocked_scenarios,
+            }
+        )
+    )
+    assert partial.debt_reconciliation.interest_shock_basis == (
+        "partial_conservative_residual"
+    )
+    assert partial.debt_reconciliation.floating_principal.amount_minor == (
+        partial.debt_reconciliation.selected_debt.amount_minor
+    )
+    assert partial.debt_reconciliation.selected_scheduled_principal.amount_minor == (
+        900_000_000
+    )
+    assert (
+        partial_shocked.scenarios[0].years[0].interest_coverage
+        != partial.scenarios[0].years[0].interest_coverage
+    )
+
+
+def test_interest_tolerance_boundary_is_explicit() -> None:
+    case = load_demo_case("stable-manufacturer")
+    total_debt = sum(
+        getattr(case.financials, field).amount_minor
+        for field in (
+            "short_term_borrowings",
+            "current_maturities",
+            "long_term_debt",
+            "finance_leases",
+        )
+    )
+    reported_interest = case.financials.cash_interest.amount_minor
+    boundary_interest = reported_interest + int(reported_interest * Decimal("0.0025"))
+
+    def result_for(implied_interest_minor: int):
+        instrument = DebtInstrumentInput(
+            name="Interest tolerance test",
+            principal=money(total_debt),
+            annual_rate=Decimal(implied_interest_minor) / Decimal(total_debt),
+            scheduled_amortization=case.financials.scheduled_principal,
+            maturity_year=3,
+            schedule_completeness="complete",
+        )
+        return analyze_case(case.model_copy(update={"debt_instruments": [instrument]}))
+
+    assert result_for(boundary_interest).debt_reconciliation.status == "reconciled"
+    assert result_for(boundary_interest + 1).debt_reconciliation.status == "blocked"
 
 
 def test_rate_decision_and_bullet_exit_are_explicit() -> None:

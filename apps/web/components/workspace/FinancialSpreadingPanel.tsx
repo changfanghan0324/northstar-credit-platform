@@ -67,6 +67,42 @@ function authorityLabel(value: string, zh: boolean): string {
     )[value] ?? value
   );
 }
+function debtSourceLabel(value: string, zh: boolean): string {
+  const labels: Record<string, { en: string; zh: string }> = {
+    balance_sheet_aggregate: {
+      en: "Balance-sheet aggregate",
+      zh: "資產負債表彙總",
+    },
+    instrument_schedule: {
+      en: "Instrument schedule",
+      zh: "逐筆債務排程",
+    },
+    partial_schedule_with_residual: {
+      en: "Partial schedule with residual",
+      zh: "部分排程（含殘餘）",
+    },
+    blocked_mismatch: { en: "Blocked mismatch", zh: "調節不符（已阻擋）" },
+  };
+  return labels[value]?.[zh ? "zh" : "en"] ?? (zh ? "未知來源" : "Unknown source");
+}
+function interestShockBasisLabel(value: string, zh: boolean): string {
+  const labels: Record<string, { en: string; zh: string }> = {
+    instrument_rate_type: {
+      en: "Instrument rate type",
+      zh: "逐筆利率類型",
+    },
+    aggregate_conservative: {
+      en: "Conservative aggregate floating basis",
+      zh: "彙總債務保守浮息基礎",
+    },
+    partial_conservative_residual: {
+      en: "Instrument floating plus conservative residual",
+      zh: "逐筆浮息加保守殘餘",
+    },
+    reported_aggregate: { en: "Reported aggregate", zh: "報告彙總" },
+  };
+  return labels[value]?.[zh ? "zh" : "en"] ?? (zh ? "未知壓力基礎" : "Unknown shock basis");
+}
 function sourceFieldLabel(value: string, zh: boolean): string {
   if (!zh) return value.replaceAll("_", " ");
   return (
@@ -172,10 +208,13 @@ export function FinancialSpreadingPanel({
           )}
           {spreading.resolved_snapshot.bridge_formula && (
             <span>
-              {zh ? "套用公式：FY + 本期 YTD − 前期可比 YTD" : spreading.resolved_snapshot.bridge_formula}
+              {zh
+                ? "套用公式：FY + 本期 YTD − 前期可比 YTD"
+                : spreading.resolved_snapshot.bridge_formula}
             </span>
           )}
-          {(spreading.resolved_snapshot.blocked_authority_fields?.length ?? 0) > 0 && (
+          {(spreading.resolved_snapshot.blocked_authority_fields?.length ?? 0) >
+            0 && (
             <span role="alert">
               {zh
                 ? `決策欄位已阻擋：${spreading.resolved_snapshot.blocked_authority_fields?.join("、")}`
@@ -204,19 +243,53 @@ export function FinancialSpreadingPanel({
             <span>
               {zh ? "來源品質：" : "Source quality: "}
               {authorityLabel(
-                spreading.resolved_snapshot.reconciliation_status === "blocked" ||
+                spreading.resolved_snapshot.reconciliation_status ===
+                  "blocked" ||
                   Object.values(
                     spreading.resolved_snapshot.source_authority,
                   ).includes("blocked")
                   ? "blocked"
                   : spreading.resolved_snapshot.reconciliation_status ===
-                        "warning"
+                      "warning"
                     ? "manual_legacy_snapshot"
                     : "period_spread",
                 zh,
               )}
             </span>
           )}
+        </div>
+      )}
+      {analysis.debt_reconciliation && (
+        <div className="source-lineage-note">
+          <strong>{zh ? "債務調節來源" : "Debt reconciliation source"}</strong>
+          <span>
+            {zh
+              ? `狀態：${analysis.debt_reconciliation.status}；選定來源：${debtSourceLabel(analysis.debt_reconciliation.selected_source, zh)}`
+              : `Status: ${analysis.debt_reconciliation.status}; selected source: ${debtSourceLabel(analysis.debt_reconciliation.selected_source, zh)}`}
+          </span>
+          <span>
+            {zh
+              ? `槓桿／DSCR／壓力／到期：同一來源 ${debtSourceLabel(analysis.debt_reconciliation.selected_source, zh)}`
+              : `Leverage / DSCR / stress / maturity: same source ${debtSourceLabel(analysis.debt_reconciliation.selected_source, zh)}`}
+          </span>
+          <span>
+            {zh
+              ? `選定債務 ${money(analysis.debt_reconciliation.selected_debt, locale, true)}；選定排定本金 ${money(analysis.debt_reconciliation.selected_scheduled_principal, locale, true)}；選定利息 ${money(analysis.debt_reconciliation.selected_interest, locale, true)}`
+              : `Selected debt ${money(analysis.debt_reconciliation.selected_debt, locale, true)}; selected scheduled principal ${money(analysis.debt_reconciliation.selected_scheduled_principal, locale, true)}; selected interest ${money(analysis.debt_reconciliation.selected_interest, locale, true)}`}
+          </span>
+          <span>
+            {zh
+              ? `利息來源：${analysis.debt_reconciliation.selected_interest_source.replaceAll("_", " ")}；利率壓力基礎：${interestShockBasisLabel(analysis.debt_reconciliation.interest_shock_basis, zh)}`
+              : `Interest source: ${analysis.debt_reconciliation.selected_interest_source.replaceAll("_", " ")}; rate-shock basis: ${interestShockBasisLabel(analysis.debt_reconciliation.interest_shock_basis, zh)}`}
+          </span>
+          {analysis.debt_reconciliation.residual_debt && (
+            <span role="alert">
+              {zh
+                ? `未排程殘餘債務 ${money(analysis.debt_reconciliation.residual_debt, locale, true)}；到期狀態：${analysis.debt_reconciliation.residual_maturity_status ?? "unknown"}`
+                : `Unscheduled residual debt ${money(analysis.debt_reconciliation.residual_debt, locale, true)}; maturity status: ${analysis.debt_reconciliation.residual_maturity_status ?? "unknown"}`}
+            </span>
+          )}
+          <span>{analysis.debt_reconciliation.coverage_basis_notice}</span>
         </div>
       )}
       {spreading.reconciliation_warnings.length > 0 && (

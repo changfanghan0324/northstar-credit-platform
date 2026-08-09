@@ -334,6 +334,7 @@ export function NewCase({ language }: { language: Language }) {
       secured: false,
       seniority: "Senior",
       collateral: "None",
+      schedule_completeness: "unspecified",
     };
     patchInput({ debt_instruments: [...input.debt_instruments, blank] });
   }
@@ -954,6 +955,28 @@ export function NewCase({ language }: { language: Language }) {
                           })
                         }
                       />
+                    </label>
+                    <label>
+                      {zh ? "排程完整性" : "Schedule completeness"}
+                      <select
+                        value={item.schedule_completeness}
+                        onChange={(e) =>
+                          patchDebt(index, {
+                            schedule_completeness: e.target
+                              .value as DebtInstrument["schedule_completeness"],
+                          })
+                        }
+                      >
+                        <option value="unspecified">
+                          {zh ? "未聲明（會阻擋）" : "Unspecified (blocks)"}
+                        </option>
+                        <option value="complete">
+                          {zh ? "完整排程" : "Complete schedule"}
+                        </option>
+                        <option value="partial">
+                          {zh ? "部分排程（需殘餘處理）" : "Partial schedule (residual)"}
+                        </option>
+                      </select>
                     </label>
                     <label>
                       {zh ? "順位" : "Seniority"}

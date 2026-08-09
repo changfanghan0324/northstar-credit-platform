@@ -96,6 +96,9 @@ def test_liquidity_and_refinancing_events_are_separate_from_covenant_status() ->
 
     assert severe.first_breach_year == 1
     assert severe.first_stress_event_year == 1
-    assert severe.liquidity_exhaustion_year == 2
-    assert severe.years[1].liquidity_status == "shortfall"
-    assert severe.years[1].refinancing_status == "none"
+    # Aggregate debt is conservatively treated as floating when no instrument
+    # rate metadata exists, so the severe rate shock can exhaust liquidity in
+    # year one rather than silently applying no shock.
+    assert severe.liquidity_exhaustion_year == 1
+    assert severe.years[0].liquidity_status == "shortfall"
+    assert severe.years[0].refinancing_status == "none"

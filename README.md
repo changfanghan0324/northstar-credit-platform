@@ -101,6 +101,7 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [v6 model-consistency hardening prompt](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [Money scale contract](docs/architecture/money-scale-contract.md)
 - [Financial lineage contract](docs/architecture/financial-lineage-contract.md)
+- [Debt reconciliation contract](docs/architecture/debt-reconciliation-contract.md)
 - [v6 Claude Opus 5 High review](docs/collaboration/v6-claude-opus-5-review.md)
 - [v6 decision log](docs/collaboration/v6-decision-log.md)
 - [Methodology](docs/methodology.md)

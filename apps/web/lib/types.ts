@@ -33,7 +33,8 @@ export type LoanRequest = {
   base_rate: string;
   rate_floor: string;
   amortization_years: number | null;
-  amortization_type: "fully_amortizing" | "partial" | "bullet" | "revolver" | null;
+  amortization_type:
+    "fully_amortizing" | "partial" | "bullet" | "revolver" | null;
   bullet_percentage: string;
   initial_drawn_amount: Money | null;
   commitment_fee_bps: number;
@@ -71,6 +72,7 @@ export type DebtInstrument = {
   secured: boolean;
   seniority: string;
   collateral: string;
+  schedule_completeness: "complete" | "partial" | "unspecified";
 };
 export type CaseInput = {
   slug: string;
@@ -221,21 +223,21 @@ export type Analysis = {
     ltm_status: "available" | "blocked" | "legacy_snapshot";
     reconciliation_warnings: string[];
     trend: Record<string, Array<string | null>>;
-  resolved_snapshot: {
+    resolved_snapshot: {
       resolver_version: string;
       snapshot_hash: string;
       basis: "reported_ltm" | "derived_ltm" | "fiscal_year" | "legacy_snapshot";
       period_id: string;
       period_end: string | null;
-    source_period_ids: string[];
-    flow_source_period_ids: string[];
-    balance_sheet_source_period_id: string | null;
-    source_lineage: Record<string, string[]>;
-    source_authority: Record<string, string>;
-    source_window?: Record<string, string | null>;
-    bridge_formula?: string | null;
-    blocked_authority_fields?: string[];
-    defaulted_authority_fields?: string[];
+      source_period_ids: string[];
+      flow_source_period_ids: string[];
+      balance_sheet_source_period_id: string | null;
+      source_lineage: Record<string, string[]>;
+      source_authority: Record<string, string>;
+      source_window?: Record<string, string | null>;
+      bridge_formula?: string | null;
+      blocked_authority_fields?: string[];
+      defaulted_authority_fields?: string[];
       financials: Record<string, Money | string>;
       reconciliation_status: "pass" | "warning" | "blocked";
       warnings: string[];
@@ -259,6 +261,7 @@ export type Analysis = {
   };
   capacity: {
     status: "available" | "blocked";
+    recommendation_state?: "calculated" | "blocked";
     underwritten_rate: string | null;
     requested: Money;
     leverage: Money;
@@ -350,6 +353,13 @@ export type Analysis = {
   } | null;
   debt_reconciliation?: {
     status: string;
+    selected_source: string;
+    selected_debt: Money;
+    selected_scheduled_principal: Money;
+    selected_interest: Money;
+    selected_interest_source: string;
+    floating_principal: Money;
+    interest_shock_basis: string;
     balance_sheet_gross_debt: Money;
     instrument_gross_debt: Money | null;
     scheduled_principal: Money | null;
@@ -357,6 +367,8 @@ export type Analysis = {
     reported_interest: Money;
     difference: Money | null;
     tolerance: Money;
+    interest_difference?: Money | null;
+    interest_tolerance?: Money | null;
     residual_debt?: Money | null;
     explanation: string;
     leverage_source: string;
@@ -364,6 +376,8 @@ export type Analysis = {
     maturity_source: string;
     aggregate_mode: boolean;
     coverage_basis_notice?: string;
+    residual_maturity_year?: number | null;
+    residual_maturity_status?: "known" | "unknown" | "not_applicable";
   } | null;
   facility_mechanics?: {
     facility_type: string;

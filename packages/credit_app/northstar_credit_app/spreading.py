@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from credit_engine import Money, debt_service_coverage, gross_debt, gross_debt_to_ebitda
+from credit_engine import Money, debt_service_coverage, gross_debt_to_ebitda
 from northstar_policy import CreditPolicy
 
 from .models import (
     AdjustmentSummaryView,
     CaseInput,
+    DebtReconciliationView,
     FinancialInput,
     FinancialPeriodInput,
     FinancialSpreadingView,
@@ -934,7 +935,10 @@ def analyze_spreading(case: CaseInput) -> FinancialSpreadingView:
 
 
 def summarize_adjustments(
-    case: CaseInput, policy: CreditPolicy, adjusted_ebitda_value: Money
+    case: CaseInput,
+    policy: CreditPolicy,
+    adjusted_ebitda_value: Money,
+    debt_reconciliation: DebtReconciliationView,
 ) -> AdjustmentSummaryView:
     template = case.financials.ebit
     reported_minor = (
@@ -980,12 +984,7 @@ def summarize_adjustments(
         if reported_minor
         else Decimal(1)
     )
-    debt = gross_debt(
-        short_term_borrowings=case.financials.short_term_borrowings.engine(),
-        current_maturities=case.financials.current_maturities.engine(),
-        long_term_debt=case.financials.long_term_debt.engine(),
-        finance_lease_liabilities=case.financials.finance_leases.engine(),
-    )
+    debt = debt_reconciliation.selected_debt.engine()
     before = gross_debt_to_ebitda(debt, _money(reported_minor, template).engine())
     after = gross_debt_to_ebitda(debt, adjusted_ebitda_value)
     reported_cfads = _money(
@@ -1004,11 +1003,9 @@ def summarize_adjustments(
         - case.financials.mandatory_pension.amount_minor,
         template,
     ).engine()
-    service = _money(
-        case.financials.cash_interest.amount_minor
-        + case.financials.scheduled_principal.amount_minor,
-        template,
-    ).engine()
+    service = debt_reconciliation.selected_interest.engine().add(
+        debt_reconciliation.selected_scheduled_principal.engine()
+    )
     dscr_before = debt_service_coverage(reported_cfads, service)
     dscr_after = debt_service_coverage(adjusted_cfads, service)
     return AdjustmentSummaryView(

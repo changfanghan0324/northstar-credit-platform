@@ -81,6 +81,15 @@ def _zh_status(value: str) -> str:
     }.get(value, value)
 
 
+def _zh_debt_source(value: str) -> str:
+    return {
+        "balance_sheet_aggregate": "資產負債表彙總",
+        "instrument_schedule": "逐筆債務排程",
+        "partial_schedule_with_residual": "部分排程（含殘餘）",
+        "blocked_mismatch": "調節不符（已阻擋）",
+    }.get(value, "未知債務來源")
+
+
 ZH_TITLES = {
     "executive_recommendation": "執行建議",
     "borrower_overview": "借款人概況",
@@ -121,6 +130,8 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
     base = next(item for item in result.scenarios if item.name == "base")
     downside = next(item for item in result.scenarios if item.name == "downside")
     severe = next(item for item in result.scenarios if item.name == "severe")
+    reconciliation = result.debt_reconciliation
+    assert reconciliation is not None
     borrowing = (
         _money(result.borrowing_base.borrowing_base)
         if result.borrowing_base.borrowing_base is not None
@@ -166,13 +177,21 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
             f"已核准調整 {_money(result.adjustments.approved_adjustment)}；正向調整占比 {Decimal(result.adjustments.positive_adjustment_pct) * 100:.2f}%。"
         ],
         "capital_structure": [
-            f"非受限現金 {_money(result.case.financials.unrestricted_cash)}；權益 {_money(result.case.financials.equity)}。"
+            f"非受限現金 {_money(result.case.financials.unrestricted_cash)}；權益 {_money(result.case.financials.equity)}。",
+            f"債務調節：{_zh_status(reconciliation.status)}；選定來源 {_zh_debt_source(reconciliation.selected_source)}；{reconciliation.coverage_basis_notice}",
         ],
         "debt_maturity_schedule": [
             f"已提供 {len(result.case.debt_instruments)} 項逐筆債務工具。"
             if result.case.debt_instruments
             else "未提供逐筆債務到期表。"
-        ],
+        ]
+        + (
+            [
+                f"未排程殘餘債務 {_money(reconciliation.residual_debt)}；到期狀態 {reconciliation.residual_maturity_status}。"
+            ]
+            if reconciliation.residual_debt is not None
+            else []
+        ),
         "key_ratios": [
             f"總槓桿 {result.metrics['gross_leverage'].value or '不具意義'} 倍；利息保障 {result.metrics['interest_coverage'].value or '不具意義'} 倍；DSCR {result.metrics['dscr'].value or '不具意義'} 倍。"
         ],
@@ -183,7 +202,7 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
             f"設施保障分數 {result.facility_protection.score}；類別 {_zh_status(result.facility_protection.category)}；預期回收類別 {_zh_status(result.facility_protection.expected_recovery_category)}；申請／建議覆蓋率 {result.facility_protection.coverage_requested}x／{result.facility_protection.coverage_recommended}x。"
         ],
         "debt_capacity": [
-            f"申請 {_money(result.capacity.requested)}；建議 {_money(result.capacity.recommended)}；約束條件數 {len(result.capacity.binding_constraints)}。"
+            f"容量狀態 {result.capacity.status}；建議狀態 {result.capacity.recommendation_state}；申請 {_money(result.capacity.requested)}；建議 {_money(result.capacity.recommended)}；約束條件數 {len(result.capacity.binding_constraints)}。"
         ],
         "base_case": [
             f"首次財務契約違約年度：{base.first_breach_year or '三年內無'}。"

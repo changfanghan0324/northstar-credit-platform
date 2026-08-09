@@ -102,6 +102,7 @@ test("demo lifecycle exposes professional workspace pages and both modes", async
   await expect(
     page.getByText("Show decision-field source authority"),
   ).toBeVisible();
+  await expect(page.getByText("Debt reconciliation source")).toBeVisible();
   await navigateWorkspace(/Stress & covenants/);
   await expect(page.locator(".line-chart")).toHaveCount(2);
   await page.getByText("Show all six reverse-stress solvers").click();

@@ -90,3 +90,49 @@ Model: `claude-opus-5` (High effort; independent adversarial review)
   extended in a later hardening pass; the current month/day rule is correct for
   the calendar-fiscal contract. The intentionally skipped mobile money-scale
   test remains named and justified in the release evidence.
+
+## v6-03 — Debt reconciliation and residual treatment
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Initial challenge
+
+- Session: `af62da6d-b9e5-41aa-be25-48f3e1dd922b`
+- Verdict: **FAIL — release blocked pending remediation**.
+- Findings: partial DSCR could use only the scheduled subset; contractual
+  interest basis could change during source promotion; residual maturity was
+  not typed; partial authority and tolerance direction were implicit; stress
+  shock behavior was not source-aware; blocked capacity, memo/PDF evidence,
+  and mixed-currency/source-label coverage were incomplete.
+
+### Codex response
+
+- Added typed `DebtReconciliationView` and selected-source equality validation.
+- Added explicit complete/partial/unspecified schedule authority. Partial mode
+  keeps full balance-sheet debt, retains residual debt, uses
+  `max(reported aggregate scheduled principal, declared schedule principal)`,
+  and blocks residuals above 20%; exactly 20% is tested.
+- Kept reported interest as the contractual source while retaining implied
+  interest as a diagnostic. Added directional debt and interest tolerance
+  boundaries and mixed-currency rejection tests.
+- Added source-aware stress: instrument floating principal, conservative
+  aggregate floating basis, and conservative partial residual basis. Fixed
+  rate debt is not repriced. Typed blocked capacity state is rendered in
+  memo/PDF/UI, and bilingual source labels cover every source variant.
+- Added partial residual memo/PDF integration evidence and the debt
+  reconciliation contract document.
+
+### Re-challenge
+
+- Session: `2ee7d0c4-9a06-4350-96af-b067dacd736a`
+- Verdict: **PASS — v6-03 approved pending final green verification gate**.
+- Claude confirmed the single-source invariant, mismatch blocking, aggregate
+  and partial stress coverage, interest-basis invariance, typed capacity state,
+  source-label coverage, and currency guard. Non-gating follow-ups were logged
+  for v6-04: distinguish a principal union from the partial `max()` floor,
+  carry typed blocked markers on all ratio surfaces, and document the 20%
+  residual policy rationale.
+- Final verification after this challenge: 122 Python tests passed with
+  92.87% coverage, strict Mypy/Ruff/format and Next build passed; TypeScript,
+  ESLint, and Playwright passed with 11 tests and 1 intentional mobile skip.

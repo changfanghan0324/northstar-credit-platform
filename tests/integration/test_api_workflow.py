@@ -212,3 +212,112 @@ def test_english_pdf_preserves_mandated_disclaimer_punctuation() -> None:
         text = "\n".join(page.extract_text() for page in reader.pages)
         assert "Synthetic demonstration data" in text
         assert "Educational and illustrative only" in text
+
+
+def test_blocked_debt_reconciliation_is_visible_in_analysis_and_pdf() -> None:
+    with TestClient(app) as client:
+        owner = {"X-Northstar-Session": f"integration-debt-blocked-{uuid4()}"}
+        template = client.post(
+            "/demo-cases/stable-manufacturer/open", headers=owner
+        ).json()["input"]
+        template["slug"] = "integration-debt-reconciliation-blocked"
+        template["debt_instruments"] = [
+            {
+                "name": "Unreconciled instrument",
+                "principal": {
+                    "amount_minor": 1_000_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "annual_rate": "0.06",
+                "rate_type": "fixed",
+                "spread": "0",
+                "rate_floor": "0",
+                "scheduled_amortization": {
+                    "amount_minor": 10_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "maturity_year": 5,
+                "secured": False,
+                "seniority": "Senior",
+                "collateral": "None",
+                "schedule_completeness": "complete",
+            }
+        ]
+        created = client.post("/cases", headers=owner, json=template)
+        assert created.status_code == 200
+        analyzed = client.post(f"/cases/{created.json()['id']}/analyze", headers=owner)
+        assert analyzed.status_code == 200
+        analysis = analyzed.json()
+        assert analysis["debt_reconciliation"]["status"] == "blocked"
+        assert analysis["debt_reconciliation"]["selected_source"] == "blocked_mismatch"
+        assert analysis["metrics"]["dscr"]["status"] == "blocked"
+        pdf = client.get(
+            f"/cases/{created.json()['id']}/memo.pdf?locale=en&detail=detailed",
+            headers=owner,
+        )
+        assert pdf.status_code == 200
+        text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages
+        )
+        assert "Debt reconciliation: blocked" in text
+        assert "blocked_mismatch" in text
+
+
+def test_partial_debt_reconciliation_residual_is_visible_in_memo_and_pdf() -> None:
+    with TestClient(app) as client:
+        owner = {"X-Northstar-Session": f"integration-debt-partial-{uuid4()}"}
+        template = client.post(
+            "/demo-cases/stable-manufacturer/open", headers=owner
+        ).json()["input"]
+        template["slug"] = "integration-debt-reconciliation-partial"
+        template["debt_instruments"] = [
+            {
+                "name": "Long-term partial schedule",
+                "principal": {
+                    "amount_minor": 6_000_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "annual_rate": "0.08",
+                "rate_type": "floating",
+                "spread": "0",
+                "rate_floor": "0",
+                "scheduled_amortization": {
+                    "amount_minor": 900_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "maturity_year": 5,
+                "secured": False,
+                "seniority": "Senior",
+                "collateral": "None",
+                "schedule_completeness": "partial",
+            }
+        ]
+        created = client.post("/cases", headers=owner, json=template)
+        assert created.status_code == 200
+        analyzed = client.post(f"/cases/{created.json()['id']}/analyze", headers=owner)
+        assert analyzed.status_code == 200
+        analysis = analyzed.json()
+        assert analysis["debt_reconciliation"]["status"] == "reconciled"
+        assert (
+            analysis["debt_reconciliation"]["selected_source"]
+            == "partial_schedule_with_residual"
+        )
+        assert analysis["debt_reconciliation"]["residual_maturity_status"] == "unknown"
+        assert "Unscheduled residual debt" in " ".join(
+            analysis["memo_sections"]["debt_maturity_schedule"]
+        )
+        pdf = client.get(
+            f"/cases/{created.json()['id']}/memo.pdf?locale=en&detail=detailed",
+            headers=owner,
+        )
+        assert pdf.status_code == 200
+        text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages
+        )
+        assert "Debt reconciliation: reconciled" in text
+        assert "Unscheduled residual debt" in text
+        assert "maturity status unknown" in text

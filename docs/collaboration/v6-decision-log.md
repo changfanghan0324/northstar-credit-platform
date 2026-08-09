@@ -55,3 +55,38 @@ Evidence:
   ESLint, Next build; Playwright 11 passed and 1 intentional mobile skip.
 - Initial Claude challenge: `60d3c93c-0f18-4c8d-a235-bea947f64253` (FAIL).
 - Remediation challenge: `9be6e487-9218-424f-a06c-bf811760802c` (PASS).
+
+## v6-03 — Debt reconciliation and residual treatment
+
+Date: 2026-08-08
+Status: implementation complete; phase review complete; production check pending
+
+Decision: expose one typed debt-reconciliation object and pass it unchanged to
+leverage, DSCR, capacity, stress, reverse stress, adjustments, maturity, and
+memo/PDF consumers. Aggregate debt is an explicit source. Complete schedules
+must reconcile within fixed-denominator directional tolerances. Partial
+long-term schedules retain balance-sheet residual debt, use the greater of
+reported and declared scheduled principal, mark residual maturity unknown, and
+block when residual exceeds the governed 20% ceiling. Contractual interest
+remains reported interest while implied interest stays diagnostic.
+
+Stress uses a typed floating basis: instrument floating debt when a complete
+schedule exists, conservative aggregate floating debt when no schedule exists,
+and instrument floating debt plus conservative residual floating debt for a
+partial schedule. Fixed-rate instruments are not repriced. Blocked capacity is
+typed with `recommendation_state=blocked` and is rendered in the bilingual UI
+and memo/PDF.
+
+Evidence:
+
+- `docs/architecture/debt-reconciliation-contract.md`
+- Debt source, tolerance, partial residual, stress, currency, and PDF tests in
+  `tests/unit/test_v5_logic_contract.py`, `tests/unit/test_application_analysis.py`,
+  and `tests/integration/test_api_workflow.py`.
+- Claude Opus 5 High initial challenge:
+  `af62da6d-b9e5-41aa-be25-48f3e1dd922b` (FAIL; remediated).
+- Claude Opus 5 High re-challenge:
+  `2ee7d0c4-9a06-4350-96af-b067dacd736a` (PASS pending green gate).
+- Final local gate: 122 Python tests, 92.87% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
+  mobile skip.

@@ -155,6 +155,7 @@ def test_dynamic_confidence_and_human_memo_money() -> None:
         annual_rate=Decimal("0.06"),
         scheduled_amortization=case.financials.scheduled_principal,
         maturity_year=3,
+        schedule_completeness="partial",
     )
     documented = analyze_case(
         case.model_copy(update={"debt_instruments": [instrument]})
@@ -178,6 +179,28 @@ def test_currency_mismatch_is_rejected_before_analysis() -> None:
 
     with pytest.raises(ValueError, match="currency mismatch"):
         type(load_demo_case("stable-manufacturer")).model_validate(case)
+
+    debt_case = load_demo_case("stable-manufacturer").model_dump(mode="python")
+    debt_case["debt_instruments"] = [
+        {
+            "name": "EUR debt",
+            "principal": {
+                "amount_minor": 1_000,
+                "currency": "EUR",
+                "minor_unit_exponent": 2,
+            },
+            "annual_rate": "0.06",
+            "scheduled_amortization": {
+                "amount_minor": 100,
+                "currency": "EUR",
+                "minor_unit_exponent": 2,
+            },
+            "maturity_year": 3,
+            "schedule_completeness": "complete",
+        }
+    ]
+    with pytest.raises(ValueError, match="currency mismatch"):
+        type(load_demo_case("stable-manufacturer")).model_validate(debt_case)
 
 
 @pytest.mark.parametrize("ebit_minor", [0, -500_000_000])

@@ -87,6 +87,7 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 - [v6 模型一致性強化規格](docs/prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 - [金額尺度契約](docs/architecture/money-scale-contract.md)
 - [財務來源血緣契約](docs/architecture/financial-lineage-contract.md)
+- [債務調節契約](docs/architecture/debt-reconciliation-contract.md)
 - [v6 Claude Opus 5 High 審查](docs/collaboration/v6-claude-opus-5-review.md)
 - [v6 決策紀錄](docs/collaboration/v6-decision-log.md)
 - [方法論](docs/methodology.md)

@@ -544,7 +544,7 @@ function zhMemoSections(a: Analysis): Record<string, string[]> {
       `設施保障分數 ${a.facility_protection.score}；類別 ${uiStatus(a.facility_protection.category, true)}；預期回收類別 ${uiStatus(a.facility_protection.expected_recovery_category, true)}；申請／建議覆蓋率 ${a.facility_protection.coverage_requested}x / ${a.facility_protection.coverage_recommended}x。`,
     ],
     debt_capacity: [
-      `容量狀態 ${a.capacity.status === "blocked" ? "已阻擋" : "可用"}；申請 ${amount(a.capacity.requested)}；建議 ${amount(a.capacity.recommended)}；約束條件：${a.capacity.binding_constraints.map((item) => bindingLabel(item, true)).join("、")}。`,
+      `容量狀態 ${a.capacity.status === "blocked" ? "已阻擋" : "可用"}；建議狀態 ${a.capacity.recommendation_state === "blocked" ? "已阻擋" : "已計算"}；申請 ${amount(a.capacity.requested)}；建議 ${amount(a.capacity.recommended)}；約束條件：${a.capacity.binding_constraints.map((item) => bindingLabel(item, true)).join("、")}。`,
     ],
     base_case: [`首次財務契約違約：${breach(base.first_breach_year)}。`],
     downside_case: [
