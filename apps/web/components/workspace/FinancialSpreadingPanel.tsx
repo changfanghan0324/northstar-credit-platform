@@ -51,6 +51,51 @@ function approvalStatus(value: string, zh: boolean): string {
     )[value] ?? "已記錄"
   );
 }
+function authorityLabel(value: string, zh: boolean): string {
+  if (!zh) return value.replaceAll("_", " ");
+  return (
+    (
+      {
+        period_spread: "多期展開",
+        debt_schedule: "債務排程",
+        facility_request: "授信申請",
+        manual_legacy_snapshot: "手動舊版快照",
+        calculated: "計算值",
+        defaulted: "預設值",
+        blocked: "已阻擋",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
+function sourceFieldLabel(value: string, zh: boolean): string {
+  if (!zh) return value.replaceAll("_", " ");
+  return (
+    (
+      {
+        revenue: "營收",
+        ebit: "EBIT",
+        ebitda: "EBITDA",
+        depreciation_amortization: "折舊與攤銷",
+        cfo: "營業現金流",
+        cash_taxes: "現金稅負",
+        maintenance_capex: "維持性資本支出",
+        working_capital_increase: "營運資金使用",
+        cash_interest: "現金利息",
+        scheduled_principal: "排定本金",
+        unrestricted_cash: "現金",
+        current_assets: "流動資產",
+        current_liabilities: "流動負債",
+        short_term_borrowings: "短期借款",
+        current_maturities: "一年內到期債務",
+        long_term_debt: "長期債務",
+        finance_leases: "租賃負債",
+        total_assets: "總資產",
+        total_liabilities: "總負債",
+        equity: "權益",
+      } as Record<string, string>
+    )[value] ?? value
+  );
+}
 
 export function FinancialSpreadingPanel({
   analysis,
@@ -117,6 +162,61 @@ export function FinancialSpreadingPanel({
               : `Flows: ${spreading.resolved_snapshot.flow_source_period_ids.join(", ") || "legacy snapshot"}; balance sheet: ${spreading.resolved_snapshot.balance_sheet_source_period_id ?? "legacy snapshot"}`}
           </span>
           <code>{spreading.resolved_snapshot.snapshot_hash.slice(0, 16)}</code>
+          {spreading.resolved_snapshot.source_window && (
+            <span>
+              {zh ? "選定視窗：" : "Selected window: "}
+              {zh
+                ? `FY ${spreading.resolved_snapshot.source_window.fiscal_year ?? "—"}（${spreading.resolved_snapshot.source_window.fiscal_year_end ?? "—"}）／本期 YTD ${spreading.resolved_snapshot.source_window.current_ytd ?? "—"}（${spreading.resolved_snapshot.source_window.current_ytd_end ?? "—"}）／前期可比 YTD ${spreading.resolved_snapshot.source_window.prior_ytd ?? "—"}（${spreading.resolved_snapshot.source_window.prior_ytd_end ?? "—"}）`
+                : `FY ${spreading.resolved_snapshot.source_window.fiscal_year ?? "—"} (${spreading.resolved_snapshot.source_window.fiscal_year_end ?? "—"}) / current YTD ${spreading.resolved_snapshot.source_window.current_ytd ?? "—"} (${spreading.resolved_snapshot.source_window.current_ytd_end ?? "—"}) / prior comparable YTD ${spreading.resolved_snapshot.source_window.prior_ytd ?? "—"} (${spreading.resolved_snapshot.source_window.prior_ytd_end ?? "—"})`}
+            </span>
+          )}
+          {spreading.resolved_snapshot.bridge_formula && (
+            <span>
+              {zh ? "套用公式：FY + 本期 YTD − 前期可比 YTD" : spreading.resolved_snapshot.bridge_formula}
+            </span>
+          )}
+          {(spreading.resolved_snapshot.blocked_authority_fields?.length ?? 0) > 0 && (
+            <span role="alert">
+              {zh
+                ? `決策欄位已阻擋：${spreading.resolved_snapshot.blocked_authority_fields?.join("、")}`
+                : `Decision fields blocked: ${spreading.resolved_snapshot.blocked_authority_fields?.join(", ")}`}
+            </span>
+          )}
+          {mode === "analyst" ? (
+            <details>
+              <summary>
+                {zh
+                  ? "顯示每個決策欄位的來源權威"
+                  : "Show decision-field source authority"}
+              </summary>
+              <ul>
+                {Object.entries(
+                  spreading.resolved_snapshot.source_authority,
+                ).map(([field, authority]) => (
+                  <li key={field}>
+                    <strong>{sourceFieldLabel(field, zh)}</strong> ·{" "}
+                    {authorityLabel(authority, zh)}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : (
+            <span>
+              {zh ? "來源品質：" : "Source quality: "}
+              {authorityLabel(
+                spreading.resolved_snapshot.reconciliation_status === "blocked" ||
+                  Object.values(
+                    spreading.resolved_snapshot.source_authority,
+                  ).includes("blocked")
+                  ? "blocked"
+                  : spreading.resolved_snapshot.reconciliation_status ===
+                        "warning"
+                    ? "manual_legacy_snapshot"
+                    : "period_spread",
+                zh,
+              )}
+            </span>
+          )}
         </div>
       )}
       {spreading.reconciliation_warnings.length > 0 && (

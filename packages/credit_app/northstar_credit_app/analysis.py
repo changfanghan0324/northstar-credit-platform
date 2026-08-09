@@ -28,7 +28,7 @@ from credit_engine import (
     net_debt_to_ebitda,
     quick_ratio,
 )
-from credit_engine.types import RatioResult, RatioStatus
+from credit_engine.types import RatioReason, RatioResult, RatioStatus
 from northstar_policy import CreditPolicy, load_policy
 
 from .facility import assess_facility, calculate_borrowing_base, calculate_pricing
@@ -342,6 +342,20 @@ def _ratio_view(result: RatioResult) -> RatioView:
             for item in result.components
         ],
         model_version=credit_engine.__version__,
+    )
+
+
+def _blocked_ratio(metric_id: str, label: str, reason: str) -> RatioResult:
+    """Create an explicit blocked metric; never coerce blocked inputs to zero."""
+    return RatioResult(
+        metric_id=metric_id,
+        status=RatioStatus.BLOCKED,
+        reason_code=RatioReason.MISSING_INPUT,
+        plain_label=label,
+        professional_name=label,
+        formula_id="blocked_missing_authority",
+        interpretation=reason,
+        corrective_action="Provide the authoritative source and rerun the analysis.",
     )
 
 
@@ -1857,6 +1871,7 @@ def analyze_case(
     debt_reconciliation = _reconcile_debt(case, resolution.financials)
     canonical_blocked = bool(
         (case.financial_spread.periods and resolution.snapshot.blocking_issues)
+        or resolution.snapshot.blocked_authority_fields
         or debt_reconciliation.status == "blocked"
     )
     # Every downstream consumer receives the same resolved financial object. A
@@ -1955,6 +1970,20 @@ def analyze_case(
         "cfo_debt": cfo_to_debt(_money(financials.cfo), debt),
         "ebitda_margin": ebitda_margin(earnings, _money(financials.revenue)),
     }
+    blocked_authority = resolution.snapshot.blocked_authority_fields
+    if blocked_authority:
+        blocked_reason = (
+            "Decision-critical financial source authority is blocked: "
+            + ", ".join(blocked_authority)
+        )
+        if "scheduled_principal" in blocked_authority:
+            # DSCR is not allowed to appear as a numeric ratio when the debt
+            # service input is only an inherited legacy value.
+            metrics_raw["dscr"] = _blocked_ratio(
+                "ratio.dscr_existing",
+                "Existing DSCR",
+                blocked_reason,
+            )
     financial_spreading = analyze_spreading(case)
     borrowing_base = calculate_borrowing_base(case, policy)
     scorecard = _scorecard(
@@ -2005,6 +2034,17 @@ def analyze_case(
         underwritten_rate,
         pricing.status,
     )
+    if blocked_authority:
+        zero_capacity = _view(_new_money(0, _money(case.request.amount)))
+        capacity = capacity.model_copy(
+            update={
+                "status": "blocked",
+                "underwritten_rate": None,
+                "dscr": zero_capacity,
+                "recommended": zero_capacity,
+                "binding_constraints": ["blocked_financial_source"],
+            }
+        )
     adjustments = summarize_adjustments(case, policy, earnings)
     facility_protection = assess_facility(
         case, policy, borrowing_base, capacity.recommended
@@ -2013,6 +2053,28 @@ def analyze_case(
         _scenario(name, case, policy, debt, available_cash, capacity, underwritten_rate)
         for name in ("base", "downside", "severe")
     ]
+    if blocked_authority:
+        scenarios = [
+            scenario.model_copy(
+                update={
+                    "years": [
+                        year.model_copy(
+                            update={
+                                "dscr": None,
+                                "dscr_status": "blocked",
+                                "dscr_reason_code": "blocked_missing_authority",
+                                "covenant_status": "blocked",
+                                "debt_service_status": "unpaid",
+                            }
+                        )
+                        for year in scenario.years
+                    ],
+                    "maturity_test_status": "blocked",
+                    "maturity_test_reason": "Blocked until debt-service source authority is reconciled.",
+                }
+            )
+            for scenario in scenarios
+        ]
     covenants = _covenants(scenarios, policy, case, scorecard, borrowing_base)
     policy_checks = _policy_checks(
         case, policy, metrics_raw, capacity, scorecard, borrowing_base
@@ -2027,6 +2089,16 @@ def analyze_case(
         capacity,
         underwritten_rate,
     )
+    if blocked_authority:
+        reverse_stress = reverse_stress.model_copy(
+            update={
+                "status": "blocked",
+                "dscr_minimum_revenue_decline": None,
+                "maximum_downside_loan": None,
+                "converged": False,
+                "failure_reason": "Blocked until decision-critical financial source authority is reconciled.",
+            }
+        )
     decision = _decision(case, scorecard, capacity, scenarios, policy_checks)
     serialized = json.dumps(
         {

@@ -19,6 +19,7 @@ from .models import (
     FinancialSpreadingView,
     MoneyValue,
     ResolvedFinancialSnapshot,
+    SourceAuthority,
 )
 
 
@@ -30,11 +31,73 @@ class FinancialResolution:
     snapshot: ResolvedFinancialSnapshot
 
 
+_DECISION_CRITICAL_FINANCIAL_FIELDS = (
+    "revenue",
+    "ebit",
+    "ebitda",
+    "depreciation_amortization",
+    "cfo",
+    "cash_taxes",
+    "maintenance_capex",
+    "working_capital_increase",
+    "cash_interest",
+    "scheduled_principal",
+    "unrestricted_cash",
+    "current_assets",
+    "current_liabilities",
+    "short_term_borrowings",
+    "current_maturities",
+    "long_term_debt",
+    "finance_leases",
+    "total_assets",
+    "total_liabilities",
+    "equity",
+)
+_PERIOD_SOURCE_FIELDS = {
+    "revenue",
+    "ebit",
+    "ebitda",
+    "depreciation_amortization",
+    "cfo",
+    "cash_taxes",
+    "maintenance_capex",
+    "working_capital_increase",
+    "cash_interest",
+    "unrestricted_cash",
+    "current_assets",
+    "current_liabilities",
+    "accounts_receivable",
+    "inventory",
+    "short_term_borrowings",
+    "current_maturities",
+    "long_term_debt",
+    "finance_leases",
+    "total_assets",
+    "total_liabilities",
+    "equity",
+    "net_income",
+    "capex",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _FiscalYtdWindow:
+    """Named FY/current-YTD/prior-YTD sources for the canonical LTM method."""
+
+    fiscal_year: FinancialPeriodInput
+    current_ytd: FinancialPeriodInput
+    prior_ytd: FinancialPeriodInput
+
+    @property
+    def periods(self) -> tuple[FinancialPeriodInput, ...]:
+        return (self.fiscal_year, self.current_ytd, self.prior_ytd)
+
+
 def _snapshot_hash(
     financials: FinancialInput, *, basis: str, source_period_ids: list[str]
 ) -> str:
     payload = {
-        "resolver_version": "v5.0",
+        "resolver_version": "v6.2",
         "basis": basis,
         "source_period_ids": source_period_ids,
         "financials": financials.model_dump(mode="json"),
@@ -220,7 +283,7 @@ def _valid_four_quarters(
 def _valid_ytd_window(
     periods: list[FinancialPeriodInput], expected_currency: str
 ) -> tuple[
-    tuple[FinancialPeriodInput, FinancialPeriodInput, FinancialPeriodInput] | None,
+    _FiscalYtdWindow | None,
     list[str],
 ]:
     issues: list[str] = []
@@ -236,13 +299,52 @@ def _valid_ytd_window(
         return None, [
             "FY plus current YTD minus prior YTD requires one FY and two YTD periods"
         ]
-    current, prior = ytd[-1], ytd[-2]
-    fy = next(
-        (item for item in reversed(fiscal_years) if item.end_date < current.end_date),
-        None,
+    # Select a named comparable pair by fiscal-year relationship. Do not use
+    # positional ``[-1]``/``[-2]`` selection: a spread may contain several YTD
+    # cuts, and the latest two rows are not necessarily comparable.
+    candidates: list[
+        tuple[FinancialPeriodInput, FinancialPeriodInput, FinancialPeriodInput]
+    ] = []
+    for current in sorted(ytd, key=lambda item: item.end_date, reverse=True):
+        for prior in sorted(ytd, key=lambda item: item.end_date, reverse=True):
+            if prior.id == current.id or prior.end_date >= current.end_date:
+                continue
+            fy = max(
+                (
+                    item
+                    for item in fiscal_years
+                    if item.fiscal_year == prior.fiscal_year
+                ),
+                key=lambda item: item.end_date,
+                default=None,
+            )
+            if fy is None:
+                continue
+            # The prior YTD must be a strict subset of the named FY, and the
+            # current/prior cuts must describe the same fiscal stub. Equal
+            # duration alone is insufficient (e.g. Mar vs Jun YTD).
+            same_fiscal_cut = (
+                prior.start_date.month == fy.start_date.month
+                and prior.start_date.day == fy.start_date.day
+                and current.start_date.month == fy.start_date.month
+                and current.start_date.day == fy.start_date.day
+                and prior.end_date.month == current.end_date.month
+                and prior.end_date.day == current.end_date.day
+                and fy.start_date <= prior.start_date
+                and prior.end_date < fy.end_date
+                and current.fiscal_year == fy.fiscal_year + 1
+            )
+            if same_fiscal_cut:
+                candidates.append((fy, current, prior))
+    if not candidates:
+        return None, [
+            "No comparable YTD pair: prior YTD must be a strict FY subset with the same fiscal start and period-end cut"
+        ]
+    # Use the latest current cut, then its latest matching prior cut. This is
+    # deterministic while keeping the selected sources named and auditable.
+    fy, current, prior = max(
+        candidates, key=lambda item: (item[1].end_date, item[2].end_date)
     )
-    if fy is None:
-        return None, ["No fiscal year precedes the selected current YTD period"]
     current_days = (current.end_date - current.start_date).days
     prior_days = (prior.end_date - prior.start_date).days
     comparable_cutoff = abs(current_days - prior_days) <= 3
@@ -251,7 +353,7 @@ def _valid_ytd_window(
     )
     valid_year_relation = (
         current.fiscal_year == fy.fiscal_year + 1
-        and prior.fiscal_year == current.fiscal_year - 1
+        and prior.fiscal_year == fy.fiscal_year
     )
     if current.flow_type != "cumulative" or prior.flow_type != "cumulative":
         issues.append(
@@ -263,7 +365,15 @@ def _valid_ytd_window(
         issues.append("FY and YTD periods must use the case currency")
     if not valid_year_relation:
         issues.append("FY and YTD fiscal-year metadata is not contiguous")
-    return (fy, current, prior) if not issues else None, issues
+    return (
+        _FiscalYtdWindow(
+            fiscal_year=fy,
+            current_ytd=current,
+            prior_ytd=prior,
+        )
+        if not issues
+        else None
+    ), issues
 
 
 def _derived_financials(
@@ -271,7 +381,8 @@ def _derived_financials(
     selected: list[FinancialPeriodInput],
     *,
     flow_mode: str,
-) -> tuple[FinancialInput, dict[str, list[str]]]:
+    ytd_window: _FiscalYtdWindow | None = None,
+) -> tuple[FinancialInput, dict[str, list[str]], set[str]]:
     """Materialize period values into the legacy-compatible input contract.
 
     Missing optional lines inherit the legacy value for compatibility, but their
@@ -282,7 +393,15 @@ def _derived_financials(
     base = case.financials
     template = case.request.amount
     lineage: dict[str, list[str]] = {}
+    calculated_fields: set[str] = set()
     updates: dict[str, MoneyValue] = {}
+    latest_source = max(selected, key=lambda item: item.end_date)
+    if flow_mode == "fy_ytd":
+        if ytd_window is None:
+            raise ValueError("FY/YTD resolution requires a named YTD window")
+        balance_source = ytd_window.current_ytd
+    else:
+        balance_source = latest_source
     flow_fields = {
         "revenue": ("income_statement", "revenue"),
         "ebit": ("income_statement", "ebit"),
@@ -315,15 +434,12 @@ def _derived_financials(
         elif flow_mode == "fy_ytd":
             value = _fy_ytd_money(selected, statement, source_field, template)
         else:
-            value = _period_money(selected[-1], statement, source_field, template)
+            value = _period_money(latest_source, statement, source_field, template)
         if value is not None:
             updates[field] = value
             lineage[field] = [item.id for item in selected]
         else:
             lineage[field] = ["legacy_snapshot"]
-    balance_source = (
-        selected[1] if flow_mode == "fy_ytd" and len(selected) == 3 else selected[-1]
-    )
     for field, (statement, source_field) in balance_fields.items():
         value = _period_money(balance_source, statement, source_field, template)
         if value is not None:
@@ -338,7 +454,7 @@ def _derived_financials(
     elif flow_mode == "fy_ytd":
         ebitda = _fy_ytd_money(selected, "income_statement", "ebitda", template)
     else:
-        ebitda = _period_money(selected[-1], "income_statement", "ebitda", template)
+        ebitda = _period_money(latest_source, "income_statement", "ebitda", template)
     if ebitda is not None:
         source_ids = [item.id for item in selected]
         source_ebit = updates.get("ebit")
@@ -350,18 +466,21 @@ def _derived_financials(
                 currency=template.currency,
                 minor_unit_exponent=template.minor_unit_exponent,
             )
+            calculated_fields.update({"ebit", "depreciation_amortization"})
         elif source_ebit is None and source_da is not None:
             updates["ebit"] = MoneyValue(
                 amount_minor=ebitda.amount_minor - source_da.amount_minor,
                 currency=template.currency,
                 minor_unit_exponent=template.minor_unit_exponent,
             )
+            calculated_fields.add("ebit")
         elif source_ebit is not None and source_da is None:
             updates["depreciation_amortization"] = MoneyValue(
                 amount_minor=ebitda.amount_minor - source_ebit.amount_minor,
                 currency=template.currency,
                 minor_unit_exponent=template.minor_unit_exponent,
             )
+            calculated_fields.add("depreciation_amortization")
         lineage["ebitda"] = source_ids
         lineage["ebit"] = source_ids
         lineage["depreciation_amortization"] = source_ids
@@ -372,6 +491,7 @@ def _derived_financials(
             currency=template.currency,
             minor_unit_exponent=template.minor_unit_exponent,
         )
+        calculated_fields.add("ebitda")
         lineage["ebitda"] = lineage.get("ebit", []) + lineage.get(
             "depreciation_amortization", []
         )
@@ -385,7 +505,10 @@ def _derived_financials(
             currency=template.currency,
             minor_unit_exponent=template.minor_unit_exponent,
         )
-    return base.model_copy(update=updates), lineage
+        calculated_fields.add("ebit")
+    for field in FinancialInput.model_fields:
+        lineage.setdefault(field, ["legacy_snapshot"])
+    return base.model_copy(update=updates), lineage, calculated_fields
 
 
 def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
@@ -411,8 +534,9 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
                 field: ["legacy_snapshot"] for field in FinancialInput.model_fields
             },
             source_authority={
-                field: "legacy_snapshot" for field in FinancialInput.model_fields
+                field: "manual_legacy_snapshot" for field in FinancialInput.model_fields
             },
+            source_window={"basis": "legacy_snapshot"},
             financials=case.financials,
             reconciliation_status="warning",
             warnings=[
@@ -425,6 +549,7 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
     selected: list[FinancialPeriodInput] | None = None
     basis: str = "derived_ltm"
     flow_mode = "sum"
+    ytd_window: _FiscalYtdWindow | None = None
     issues = _validate_common_periods(periods, case.request.amount.currency)
     if method == "reported_ltm":
         reported = [item for item in periods if item.period_type == "ltm"]
@@ -441,10 +566,12 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
         basis = "derived_ltm"
         flow_mode = "sum"
     elif method == "fiscal_year_plus_current_ytd_minus_prior_ytd":
-        window, ytd_issues = _valid_ytd_window(periods, case.request.amount.currency)
+        ytd_window, ytd_issues = _valid_ytd_window(
+            periods, case.request.amount.currency
+        )
         issues.extend(ytd_issues)
-        if window is not None and not issues:
-            selected = list(window)
+        if ytd_window is not None and not issues:
+            selected = list(ytd_window.periods)
         else:
             issues.append(
                 "FY plus current YTD minus prior YTD requires comparable fiscal windows"
@@ -464,7 +591,8 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
             periods, case.request.amount.currency
         )
         if ytd_window is not None and not ytd_issues:
-            alternate = (list(ytd_window), "fy_ytd")
+            alternate = (list(ytd_window.periods), "fy_ytd")
+            ytd_window = None
     elif method == "fiscal_year_plus_current_ytd_minus_prior_ytd":
         quarter_window, quarter_issues = _valid_four_quarters(
             periods, case.request.amount.currency
@@ -512,13 +640,19 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
             source_period_ids=[],
             source_lineage={},
             source_authority={},
+            source_window={"basis": "unresolved"},
             financials=case.financials,
             reconciliation_status="blocked",
             blocking_issues=sorted(set(issues)),
         )
         return FinancialResolution(case.financials, snapshot)
 
-    resolved, lineage = _derived_financials(case, selected, flow_mode=flow_mode)
+    resolved, lineage, calculated_fields = _derived_financials(
+        case,
+        selected,
+        flow_mode=flow_mode,
+        ytd_window=ytd_window,
+    )
     quality_warnings: list[str] = []
     source_types = {item.source_type for item in selected}
     if len(source_types) > 1:
@@ -533,29 +667,11 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
     # analyst supplied a non-empty spread. Debt schedule reconciliation can add
     # instrument-level detail, but the canonical balance sheet still needs its
     # own source for these headline metrics.
-    core_fields = (
-        "revenue",
-        "ebitda",
-        "ebit",
-        "cash_taxes",
-        "cfo",
-        "cash_interest",
-        "maintenance_capex",
-        "working_capital_increase",
-        "scheduled_principal",
-        "unrestricted_cash",
-        "current_assets",
-        "current_liabilities",
-        "short_term_borrowings",
-        "current_maturities",
-        "long_term_debt",
-        "finance_leases",
-        "total_assets",
-        "total_liabilities",
-        "equity",
-    )
+    core_fields = _DECISION_CRITICAL_FINANCIAL_FIELDS
     missing_core = [
-        field for field in core_fields if lineage.get(field) == ["legacy_snapshot"]
+        field
+        for field in core_fields
+        if field != "scheduled_principal" and lineage.get(field) == ["legacy_snapshot"]
     ]
     if resolved.revenue.amount_minor <= 0:
         issues.append("revenue: canonical source must contain positive revenue")
@@ -572,42 +688,85 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
         resolved.total_liabilities.amount_minor + resolved.equity.amount_minor
     )
     if abs(bs_difference) > 1:
+        balance_source = (
+            ytd_window.current_ytd
+            if flow_mode == "fy_ytd" and ytd_window is not None
+            else max(selected, key=lambda item: item.end_date)
+        )
         issues.append(
-            f"{selected[1].label if flow_mode == 'fy_ytd' and len(selected) == 3 else selected[-1].label}: assets do not reconcile to liabilities plus equity ({bs_difference} minor units)"
+            f"{balance_source.label}: assets do not reconcile to liabilities plus equity ({bs_difference} minor units)"
         )
     status = (
         "blocked"
         if issues
         else "warning"
         if quality_warnings
-        or any(source == ["legacy_snapshot"] for source in lineage.values())
+        or any(
+            field in _PERIOD_SOURCE_FIELDS and source == ["legacy_snapshot"]
+            for field, source in lineage.items()
+        )
         else "pass"
     )
+    latest_source = max(selected, key=lambda item: item.end_date)
+    balance_source = (
+        ytd_window.current_ytd
+        if flow_mode == "fy_ytd" and ytd_window is not None
+        else latest_source
+    )
+    source_authority: dict[str, SourceAuthority] = {}
+    for field, source in lineage.items():
+        if field in calculated_fields:
+            source_authority[field] = "calculated"
+        elif source == ["legacy_snapshot"]:
+            source_authority[field] = (
+                "blocked" if field in core_fields else "manual_legacy_snapshot"
+            )
+        else:
+            source_authority[field] = "period_spread"
+    blocked_authority_fields = sorted(
+        field for field, authority in source_authority.items() if authority == "blocked"
+    )
+    defaulted_authority_fields = sorted(
+        field
+        for field, authority in source_authority.items()
+        if authority == "defaulted"
+    )
+    source_window = {
+        "fiscal_year": ytd_window.fiscal_year.id if ytd_window else None,
+        "current_ytd": ytd_window.current_ytd.id if ytd_window else None,
+        "prior_ytd": ytd_window.prior_ytd.id if ytd_window else None,
+        "fiscal_year_end": (
+            ytd_window.fiscal_year.end_date.isoformat() if ytd_window else None
+        ),
+        "current_ytd_end": (
+            ytd_window.current_ytd.end_date.isoformat() if ytd_window else None
+        ),
+        "prior_ytd_end": (
+            ytd_window.prior_ytd.end_date.isoformat() if ytd_window else None
+        ),
+    }
     snapshot = ResolvedFinancialSnapshot(
         snapshot_hash=_snapshot_hash(
             resolved, basis=basis, source_period_ids=[item.id for item in selected]
         ),
         basis=basis,  # type: ignore[arg-type]
         period_id=(
-            selected[-1].id
+            latest_source.id
             if len(selected) == 1
             else "derived-" + ("fy-ytd" if flow_mode == "fy_ytd" else "four-quarters")
         ),
-        period_end=selected[-1].end_date,
+        period_end=balance_source.end_date,
         source_period_ids=[item.id for item in selected],
         flow_source_period_ids=[item.id for item in selected],
-        balance_sheet_source_period_id=(
-            selected[1].id
-            if flow_mode == "fy_ytd" and len(selected) == 3
-            else selected[-1].id
-        ),
+        balance_sheet_source_period_id=balance_source.id,
         source_lineage=lineage,
-        source_authority={
-            field: (
-                "legacy_snapshot" if source == ["legacy_snapshot"] else "period_spread"
-            )
-            for field, source in lineage.items()
-        },
+        source_authority=source_authority,
+        source_window=source_window,
+        bridge_formula=(
+            "FY + Current YTD - Prior Comparable YTD" if flow_mode == "fy_ytd" else None
+        ),
+        blocked_authority_fields=blocked_authority_fields,
+        defaulted_authority_fields=defaulted_authority_fields,
         financials=resolved,
         reconciliation_status=status,  # type: ignore[arg-type]
         warnings=[
@@ -615,8 +774,17 @@ def resolve_underwriting_financials(case: CaseInput) -> FinancialResolution:
             *[
                 f"{field}: legacy snapshot inherited because the selected period omitted this optional line"
                 for field, source in lineage.items()
-                if source == ["legacy_snapshot"] and field not in missing_core
+                if source == ["legacy_snapshot"]
+                and field in _PERIOD_SOURCE_FIELDS
+                and field not in missing_core
             ],
+            *(
+                [
+                    "scheduled_principal: authority is blocked until a debt schedule is reconciled"
+                ]
+                if source_authority.get("scheduled_principal") == "blocked"
+                else []
+            ),
         ],
         blocking_issues=sorted(set(issues)),
     )
@@ -718,15 +886,14 @@ def analyze_spreading(case: CaseInput) -> FinancialSpreadingView:
         and historical
         and len(ytd) >= 2
     ):
-        latest_ytd = sorted(ytd, key=lambda item: item.end_date)[-2:]
-        comparable = (latest_ytd[0].end_date - latest_ytd[0].start_date).days == (
-            latest_ytd[1].end_date - latest_ytd[1].start_date
-        ).days
-        if comparable:
+        window, window_issues = _valid_ytd_window(periods, case.request.amount.currency)
+        if window is not None and not window_issues:
             ltm_id = "derived-fy-plus-current-ytd-minus-prior-ytd"
             status = "available"
         else:
-            warnings.append("YTD periods are not comparable; LTM is blocked")
+            warnings.extend(
+                window_issues or ["YTD periods are not comparable; LTM is blocked"]
+            )
     else:
         warnings.append("Selected LTM method does not have compatible source periods")
 

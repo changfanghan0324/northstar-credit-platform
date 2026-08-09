@@ -93,7 +93,6 @@ def test_display_scale_is_metadata_only_and_does_not_double_scale() -> None:
 
 def test_fy_ytd_uses_current_ytd_for_balance_sheet_lineage() -> None:
     case = load_demo_case("stable-manufacturer")
-    base = case.financials
 
     def p(
         pid: str, year: int, kind: str, start: date, end: date, value: int, flow: str
@@ -108,20 +107,35 @@ def test_fy_ytd_uses_current_ytd_for_balance_sheet_lineage() -> None:
             source_type="management",
             source_reference=f"synthetic/{pid}",
             flow_type=flow,  # type: ignore[arg-type]
-            income_statement={"revenue": money(value), "ebitda": money(value // 5)},
+            income_statement={
+                "revenue": money(value),
+                "ebitda": money(value // 5),
+                "ebit": money(value // 6),
+                "depreciation_amortization": money(value // 30),
+                "cash_interest": money(value // 50),
+                "cash_taxes": money(value // 40),
+                "net_income": money(value // 10),
+            },
             balance_sheet={
                 "cash": money(value),
                 "current_assets": money(value * 2),
                 "current_liabilities": money(value),
-                "short_term_debt": base.short_term_borrowings,
-                "current_maturities": base.current_maturities,
-                "long_term_debt": base.long_term_debt,
-                "lease_liabilities": base.finance_leases,
+                "accounts_receivable": money(value // 2),
+                "inventory": money(value // 4),
+                "short_term_debt": money(value // 10),
+                "current_maturities": money(value // 20),
+                "long_term_debt": money(value // 5),
+                "lease_liabilities": money(value // 25),
                 "equity": money(value),
                 "total_liabilities": money(value),
                 "total_assets": money(value * 2),
             },
-            cash_flow={"operating_cash_flow": money(value // 2)},
+            cash_flow={
+                "operating_cash_flow": money(value // 2),
+                "maintenance_capex": money(value // 20),
+                "working_capital_change": money(value // 30),
+                "capital_expenditures": money(value // 15),
+            },
         )
 
     fy = p(
@@ -153,9 +167,118 @@ def test_fy_ytd_uses_current_ytd_for_balance_sheet_lineage() -> None:
         case.model_copy(update={"financial_spread": spread})
     )
     assert resolved.financials.revenue.amount_minor == 1_100_000
+    assert (
+        resolved.financials.ebit.amount_minor
+        + resolved.financials.depreciation_amortization.amount_minor
+        == 220_000
+    )
+    assert resolved.financials.cfo.amount_minor == 550_000
     assert resolved.financials.unrestricted_cash.amount_minor == 500_000
+    assert resolved.financials.current_assets.amount_minor == 1_000_000
+    assert resolved.financials.current_liabilities.amount_minor == 500_000
+    assert resolved.financials.accounts_receivable.amount_minor == 250_000
+    assert resolved.financials.inventory.amount_minor == 125_000
+    assert resolved.financials.short_term_borrowings.amount_minor == 50_000
+    assert resolved.financials.current_maturities.amount_minor == 25_000
+    assert resolved.financials.long_term_debt.amount_minor == 100_000
+    assert resolved.financials.finance_leases.amount_minor == 20_000
+    assert resolved.financials.total_assets.amount_minor == 1_000_000
+    assert resolved.financials.total_liabilities.amount_minor == 500_000
+    assert resolved.financials.equity.amount_minor == 500_000
     assert resolved.snapshot.balance_sheet_source_period_id == "current"
+    assert resolved.snapshot.period_end == date(2025, 6, 30)
+    assert resolved.snapshot.flow_source_period_ids == ["fy24", "current", "prior"]
     assert resolved.snapshot.source_lineage["unrestricted_cash"] == ["current"]
+    assert resolved.snapshot.source_lineage["revenue"] == [
+        "fy24",
+        "current",
+        "prior",
+    ]
+    assert resolved.snapshot.source_authority["cash_interest"] == "period_spread"
+    assert resolved.snapshot.source_authority["scheduled_principal"] == "blocked"
+    assert resolved.snapshot.blocked_authority_fields == ["scheduled_principal"]
+    assert resolved.snapshot.source_window == {
+        "fiscal_year": "fy24",
+        "current_ytd": "current",
+        "prior_ytd": "prior",
+        "fiscal_year_end": "2024-12-31",
+        "current_ytd_end": "2025-06-30",
+        "prior_ytd_end": "2024-06-30",
+    }
+    assert resolved.snapshot.bridge_formula == "FY + Current YTD - Prior Comparable YTD"
+
+    blocked_analysis = analyze_case(
+        case.model_copy(update={"financial_spread": spread})
+    )
+    assert blocked_analysis.analysis_status == "blocked"
+    assert blocked_analysis.metrics["dscr"].status == "blocked"
+    assert blocked_analysis.capacity.recommended.amount_minor == 0
+    assert blocked_analysis.reverse_stress.status == "blocked"
+
+
+def test_fy_ytd_rejects_wrong_cut_and_degenerate_windows() -> None:
+    case = load_demo_case("stable-manufacturer")
+    # Same-duration YTD, but it starts in February rather than at the FY start.
+    fy = FinancialPeriodInput(
+        id="fy24",
+        label="FY 2024",
+        period_type="historical_fiscal_year",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 12, 31),
+        fiscal_year=2024,
+        source_type="management",
+        source_reference="synthetic/fy24",
+        income_statement={"revenue": money(1_000_000)},
+    )
+    wrong_prior = FinancialPeriodInput(
+        id="wrong-prior",
+        label="YTD Jul 2024",
+        period_type="ytd",
+        start_date=date(2024, 2, 1),
+        end_date=date(2024, 7, 30),
+        fiscal_year=2024,
+        source_type="management",
+        source_reference="synthetic/wrong-prior",
+        flow_type="cumulative",
+        income_statement={"revenue": money(400_000)},
+    )
+    current = wrong_prior.model_copy(
+        update={
+            "id": "current",
+            "label": "YTD Jul 2025",
+            "start_date": date(2025, 2, 1),
+            "end_date": date(2025, 7, 30),
+            "fiscal_year": 2025,
+        }
+    )
+    wrong = resolve_underwriting_financials(
+        case.model_copy(
+            update={
+                "financial_spread": FinancialSpreadInput(
+                    periods=[fy, wrong_prior, current],
+                    selected_ltm_method="fiscal_year_plus_current_ytd_minus_prior_ytd",
+                )
+            }
+        )
+    )
+    assert wrong.snapshot.reconciliation_status == "blocked"
+    assert any("strict FY subset" in issue for issue in wrong.snapshot.blocking_issues)
+
+    missing_prior = resolve_underwriting_financials(
+        case.model_copy(
+            update={
+                "financial_spread": FinancialSpreadInput(
+                    periods=[fy, current],
+                    selected_ltm_method="fiscal_year_plus_current_ytd_minus_prior_ytd",
+                )
+            }
+        )
+    )
+    assert missing_prior.snapshot.reconciliation_status == "blocked"
+    assert any(
+        "one FY and two YTD" in issue
+        for issue in missing_prior.snapshot.blocking_issues
+    )
 
 
 def test_debt_mismatch_blocks_decision_and_itemized_cfads_flows_to_capacity() -> None:

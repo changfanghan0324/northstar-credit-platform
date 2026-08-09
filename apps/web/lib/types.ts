@@ -232,6 +232,10 @@ export type Analysis = {
     balance_sheet_source_period_id: string | null;
     source_lineage: Record<string, string[]>;
     source_authority: Record<string, string>;
+    source_window?: Record<string, string | null>;
+    bridge_formula?: string | null;
+    blocked_authority_fields?: string[];
+    defaulted_authority_fields?: string[];
       financials: Record<string, Money | string>;
       reconciliation_status: "pass" | "warning" | "blocked";
       warnings: string[];
@@ -411,6 +415,7 @@ export type Analysis = {
     remediation: string;
   }>;
   reverse_stress: {
+    status?: "available" | "blocked";
     dscr_minimum_revenue_decline: string | null;
     leverage_breach_margin_decline: string | null;
     maximum_downside_loan: Money | null;

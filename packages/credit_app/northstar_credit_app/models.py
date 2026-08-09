@@ -31,6 +31,17 @@ class MoneyValue(ContractModel):
         )
 
 
+SourceAuthority = Literal[
+    "period_spread",
+    "debt_schedule",
+    "facility_request",
+    "manual_legacy_snapshot",
+    "calculated",
+    "defaulted",
+    "blocked",
+]
+
+
 class BorrowerInput(ContractModel):
     legal_name: str
     industry: str
@@ -655,7 +666,7 @@ class ResolvedFinancialSnapshot(ContractModel):
     """The immutable, explainable financial basis used by underwriting."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    resolver_version: str = "v5.0"
+    resolver_version: str = "v6.2"
     snapshot_hash: str
     basis: Literal["reported_ltm", "derived_ltm", "fiscal_year", "legacy_snapshot"]
     period_id: str
@@ -664,7 +675,13 @@ class ResolvedFinancialSnapshot(ContractModel):
     flow_source_period_ids: list[str] = Field(default_factory=list)
     balance_sheet_source_period_id: str | None = None
     source_lineage: dict[str, list[str]]
-    source_authority: dict[str, str] = Field(default_factory=dict)
+    source_authority: dict[str, SourceAuthority] = Field(default_factory=dict)
+    # Explicitly named window metadata prevents reviewers and downstream
+    # consumers from having to infer the FY/YTD bridge from array position.
+    source_window: dict[str, str | None] = Field(default_factory=dict)
+    bridge_formula: str | None = None
+    blocked_authority_fields: list[str] = Field(default_factory=list)
+    defaulted_authority_fields: list[str] = Field(default_factory=list)
     financials: FinancialInput
     reconciliation_status: Literal["pass", "warning", "blocked"]
     warnings: list[str] = Field(default_factory=list)
@@ -939,6 +956,7 @@ class DecisionView(ContractModel):
 
 
 class ReverseStressView(ContractModel):
+    status: Literal["available", "blocked"] = "available"
     dscr_minimum_revenue_decline: str | None
     leverage_breach_margin_decline: str | None
     maximum_downside_loan: MoneyValue | None

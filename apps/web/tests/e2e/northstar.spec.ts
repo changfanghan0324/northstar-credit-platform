@@ -98,6 +98,10 @@ test("demo lifecycle exposes professional workspace pages and both modes", async
   await expect(page.getByText("Analyst multi-period spread")).toBeVisible();
   await page.getByRole("button", { name: "Add 3-year history" }).click();
   await expect(page.locator(".period-cards fieldset")).toHaveCount(3);
+  await navigateWorkspace(/Financials/);
+  await expect(
+    page.getByText("Show decision-field source authority"),
+  ).toBeVisible();
   await navigateWorkspace(/Stress & covenants/);
   await expect(page.locator(".line-chart")).toHaveCount(2);
   await page.getByText("Show all six reverse-stress solvers").click();
