@@ -155,6 +155,68 @@ export function FacilityProtectionPage({
           </ul>
         </article>
       </div>
+      <article className="panel revolving-mechanics-panel">
+        <div className="panel-head">
+          <div>
+            <h3>{zh ? "循環／ABL 機制" : "Revolver / ABL mechanics"}</h3>
+            <p>
+              {zh
+                ? "承諾額、已動用、借款基礎與可用額分開呈現；未動用承諾額不等於借款基礎流動性。"
+                : "Commitment, drawn amount, borrowing base, and availability remain distinct; undrawn commitment is not borrowing-base liquidity."}
+            </p>
+          </div>
+          <span className="pill">
+            {status(analysis.revolver_abl.status, zh)}
+          </span>
+        </div>
+        <div className="stats-grid">
+          <div className="stat">
+            <span>{zh ? "承諾額" : "Commitment"}</span>
+            <strong>
+              {money(analysis.revolver_abl.commitment, locale, true)}
+            </strong>
+          </div>
+          <div className="stat">
+            <span>{zh ? "已動用" : "Drawn amount"}</span>
+            <strong>
+              {money(analysis.revolver_abl.drawn_amount, locale, true)}
+            </strong>
+          </div>
+          <div className="stat">
+            <span>{zh ? "借款基礎" : "Borrowing base"}</span>
+            <strong>
+              {analysis.revolver_abl.borrowing_base
+                ? money(analysis.revolver_abl.borrowing_base, locale, true)
+                : "—"}
+            </strong>
+          </div>
+          <div className="stat">
+            <span>{zh ? "可用額" : "Availability"}</span>
+            <strong>
+              {analysis.revolver_abl.availability
+                ? money(analysis.revolver_abl.availability, locale, true)
+                : "—"}
+            </strong>
+          </div>
+          <div className="stat">
+            <span>{zh ? "承諾費" : "Commitment fee"}</span>
+            <strong>
+              {analysis.revolver_abl.commitment_fee
+                ? `${money(analysis.revolver_abl.commitment_fee, locale, true)} (${analysis.revolver_abl.commitment_fee_bps ?? "—"} bps)`
+                : "—"}
+            </strong>
+          </div>
+          <div className="stat">
+            <span>{zh ? "現金利息" : "Cash interest"}</span>
+            <strong>
+              {analysis.revolver_abl.cash_interest
+                ? `${money(analysis.revolver_abl.cash_interest, locale, true)} (${analysis.revolver_abl.cash_interest_rate ?? "—"})`
+                : "—"}
+            </strong>
+          </div>
+        </div>
+        <small>{analysis.revolver_abl.explanation}</small>
+      </article>
       <article className="panel borrowing-base-panel">
         <div className="panel-head">
           <div>

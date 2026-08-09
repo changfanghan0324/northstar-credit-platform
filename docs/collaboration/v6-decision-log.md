@@ -144,3 +144,31 @@ Evidence:
 - Final local gate: 128 Python tests, 93.03% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
   mobile skip.
+
+## v6-06 — Revolver and ABL mechanics
+
+Date: 2026-08-08
+Status: implementation complete; phase review complete; production verification complete
+
+Decision: add one `RevolverAblView` to every analysis and keep commitment,
+drawn amount, undrawn commitment, borrowing base, availability, commitment
+fee, and cash interest as separate typed values. A committed revolver uses
+commitment less drawn amount. An ABL uses the lower of commitment and eligible
+borrowing base less drawn amount. Missing ABL collateral inputs block
+availability and capacity. Commitment fees use undrawn commitment; cash
+interest uses drawn amount and the canonical RateDecision underwritten rate.
+The same availability view constrains capacity and scenario revolver draws.
+
+Evidence:
+
+- `docs/architecture/revolver-abl-contract.md`
+- Unit tests for policy-capped ABL availability, commitment-limited revolver
+  availability, fee and interest amounts, missing-input blocking, and capacity
+  linkage.
+- API integration test for typed output and English/Traditional Chinese PDF
+  labels.
+- Claude Opus 5 High challenge `e1424c55-8110-449d-bae6-0b76e6983ce1`
+  (PASS; non-blocking follow-ups logged in the review document).
+- Final local gate: 130 Python tests, 93.13% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
+  mobile skip.

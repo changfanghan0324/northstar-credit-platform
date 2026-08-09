@@ -104,6 +104,7 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 - [Debt reconciliation contract](docs/architecture/debt-reconciliation-contract.md)
 - [Facility mechanics contract](docs/architecture/facility-mechanics-contract.md)
 - [Bullet exit and maturity contract](docs/architecture/bullet-exit-contract.md)
+- [Revolver and ABL mechanics contract](docs/architecture/revolver-abl-contract.md)
 - [v6 Claude Opus 5 High review](docs/collaboration/v6-claude-opus-5-review.md)
 - [v6 decision log](docs/collaboration/v6-decision-log.md)
 - [Methodology](docs/methodology.md)

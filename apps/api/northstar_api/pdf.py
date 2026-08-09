@@ -169,6 +169,8 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
         "loan_request": [f"借款人申請 {_money(result.case.request.amount)}。"],
         "facility_structure": [
             f"統一授信機制：{_zh_status(mechanics.facility_type)}；攤還類型 {_zh_status(mechanics.amortization_type)}；狀態 {_zh_status(mechanics.status)}；到期 {mechanics.maturity_years} 年；攤還 {mechanics.amortization_years or mechanics.maturity_years} 年。",
+            f"循環／ABL 機制：狀態 {_zh_status(result.revolver_abl.status)}；承諾額 {_money(result.revolver_abl.commitment)}；已動用 {_money(result.revolver_abl.drawn_amount)}；借款基礎 {_money(result.revolver_abl.borrowing_base) if result.revolver_abl.borrowing_base is not None else '不適用'}；可用額 {_money(result.revolver_abl.availability) if result.revolver_abl.availability is not None else '不適用'}；承諾費 {result.revolver_abl.commitment_fee_bps if result.revolver_abl.commitment_fee_bps is not None else '不適用'} bps／{_money(result.revolver_abl.commitment_fee) if result.revolver_abl.commitment_fee is not None else '不適用'}；現金利息 {_money(result.revolver_abl.cash_interest) if result.revolver_abl.cash_interest is not None else '不適用'}。",
+            result.revolver_abl.explanation,
             *mechanics.blocking_issues,
         ],
         "loan_purpose": [

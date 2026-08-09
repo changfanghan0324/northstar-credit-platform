@@ -372,3 +372,147 @@ def test_five_year_bullet_maturity_and_no_refinancing_are_visible_in_bilingual_p
                 for page in PdfReader(BytesIO(pdf.content)).pages
             )
             assert expected_text in text
+
+
+def test_revolver_abl_contract_is_visible_in_bilingual_pdf() -> None:
+    with TestClient(app) as client:
+        owner = {"X-Northstar-Session": f"integration-abl-{uuid4()}"}
+        template = client.post(
+            "/demo-cases/stable-manufacturer/open", headers=owner
+        ).json()["input"]
+        template["slug"] = "integration-revolver-abl"
+        template["request"].update(
+            {
+                "amount": {
+                    "amount_minor": 1_000_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "facility_type": "asset_based",
+                "security_type": "asset_based",
+                "amortization_type": "revolver",
+                "initial_drawn_amount": {
+                    "amount_minor": 200_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "commitment_fee_bps": 100,
+            }
+        )
+        template["borrowing_base"] = {
+            "accounts_receivable": {
+                "gross_receivables": {
+                    "amount_minor": 1_000_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "ineligible_receivables": {
+                    "amount_minor": 100_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "past_due_receivables": {
+                    "amount_minor": 50_000_000,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "cross_aged_receivables": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "foreign_receivables": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "concentration_reserve": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "dilution_reserve": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "advance_rate": "0.80",
+            },
+            "inventory": {
+                "gross_inventory": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "ineligible_inventory": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "obsolete_inventory": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "advance_rate": "0.50",
+                "inventory_cap": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+            },
+            "other_collateral": {
+                "equipment": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "real_estate": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "cash": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+                "other": {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "minor_unit_exponent": 2,
+                },
+            },
+            "additional_reserves": {
+                "amount_minor": 0,
+                "currency": "USD",
+                "minor_unit_exponent": 2,
+            },
+            "prior_liens": {
+                "amount_minor": 0,
+                "currency": "USD",
+                "minor_unit_exponent": 2,
+            },
+        }
+        created = client.post("/cases", headers=owner, json=template)
+        assert created.status_code == 200
+        case_id = created.json()["id"]
+        analyzed = client.post(f"/cases/{case_id}/analyze", headers=owner)
+        assert analyzed.status_code == 200
+        view = analyzed.json()["revolver_abl"]
+        assert view["availability"]["amount_minor"] == 480_000_000
+        assert view["commitment_fee"]["amount_minor"] == 8_000_000
+        for locale, expected_text in (
+            ("en", "Revolver/ABL mechanics"),
+            ("zh-TW", "循環／ABL 機制"),
+        ):
+            pdf = client.get(
+                f"/cases/{case_id}/memo.pdf?locale={locale}&detail=detailed",
+                headers=owner,
+            )
+            assert pdf.status_code == 200
+            text = "\n".join(
+                page.extract_text() or ""
+                for page in PdfReader(BytesIO(pdf.content)).pages
+            )
+            assert expected_text in text

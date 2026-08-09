@@ -30,7 +30,12 @@ from credit_engine import (
 from credit_engine.types import RatioReason, RatioResult, RatioStatus
 from northstar_policy import CreditPolicy, load_policy
 
-from .facility import assess_facility, calculate_borrowing_base, calculate_pricing
+from .facility import (
+    assess_facility,
+    calculate_borrowing_base,
+    calculate_pricing,
+    calculate_revolver_abl,
+)
 from .models import (
     AnalysisResult,
     BorrowingBaseView,
@@ -48,6 +53,7 @@ from .models import (
     RatioView,
     ResolvedFacilityMechanics,
     ReverseStressView,
+    RevolverAblView,
     ScenarioView,
     ScenarioYearView,
     ScorecardView,
@@ -772,6 +778,7 @@ def _capacity(
     cash_available: Money,
     existing_service: Money,
     borrowing_base: BorrowingBaseView,
+    revolver_abl: RevolverAblView,
     underwritten_rate: Decimal | None = None,
     pricing_status: Literal["available", "blocked"] = "available",
 ) -> CapacityView:
@@ -809,8 +816,8 @@ def _capacity(
     if mechanics.facility_type == "asset_based":
         candidates["collateral_capacity"] = (
             0
-            if borrowing_base.availability is None
-            else borrowing_base.availability.amount_minor
+            if revolver_abl.availability is None
+            else revolver_abl.availability.amount_minor
         )
     elif collateral_applicable:
         candidates["collateral_capacity"] = (
@@ -887,6 +894,7 @@ def _scenario(
     debt_reconciliation: DebtReconciliationView,
     starting_cash: Money,
     capacity: CapacityView,
+    revolver_abl: RevolverAblView,
     underwritten_rate: Decimal | None = None,
 ) -> ScenarioView:
     assumptions = case.scenarios[name]  # type: ignore[index]
@@ -907,11 +915,15 @@ def _scenario(
     new_debt = initial_draw if amortization_kind == "revolver" else commitment
     outstanding = existing_debt
     cash = starting_cash.amount_minor
-    revolver_available = (
-        max(0, commitment - initial_draw)
-        if amortization_kind == "revolver"
-        else case.financials.undrawn_revolver.amount_minor
-    )
+    if amortization_kind == "revolver":
+        base_limit = (
+            revolver_abl.borrowing_base.amount_minor
+            if revolver_abl.borrowing_base is not None
+            else commitment
+        )
+        revolver_available = max(0, min(commitment, base_limit) - initial_draw)
+    else:
+        revolver_available = case.financials.undrawn_revolver.amount_minor
     minimum_cash = case.financials.minimum_operating_cash.amount_minor
     effective_new_rate = _underwritten_rate(case, underwritten_rate)
     if case.request.rate_type == "floating":
@@ -1509,6 +1521,7 @@ def _reverse_stress(
     earnings: Money,
     debt_reconciliation: DebtReconciliationView,
     capacity: CapacityView,
+    revolver_abl: RevolverAblView,
     underwritten_rate: Decimal | None = None,
 ) -> ReverseStressView:
     del base_cfads, service, earnings
@@ -1544,6 +1557,7 @@ def _reverse_stress(
             debt_reconciliation,
             starting_cash,
             trial_capacity,
+            revolver_abl,
             underwritten_rate,
         )
 
@@ -2237,6 +2251,9 @@ def analyze_case(
     )
     underwritten_rate = _underwritten_rate(case, pricing_rate)
     rate_decision = _rate_decision(case, facility_mechanics, pricing_rate)
+    revolver_abl = calculate_revolver_abl(
+        facility_mechanics, borrowing_base, rate_decision
+    )
     capacity = _capacity(
         case,
         policy,
@@ -2246,6 +2263,7 @@ def analyze_case(
         cash_available,
         service,
         borrowing_base,
+        revolver_abl,
         underwritten_rate,
         pricing.status,
     )
@@ -2278,6 +2296,7 @@ def analyze_case(
             debt_reconciliation,
             available_cash,
             capacity,
+            revolver_abl,
             underwritten_rate,
         )
         for name in ("base", "downside", "severe")
@@ -2329,6 +2348,7 @@ def analyze_case(
         earnings,
         debt_reconciliation,
         capacity,
+        revolver_abl,
         underwritten_rate,
     )
     if blocked_authority or debt_blocked or mechanics_blocked:
@@ -2407,6 +2427,8 @@ def analyze_case(
         ],
         "facility_structure": [
             f"Resolved mechanics: {facility_mechanics.facility_type}; {facility_mechanics.amortization_type}; status {facility_mechanics.status}; {case.request.rate_type} rate; {facility_mechanics.maturity_years}-year maturity; {facility_mechanics.amortization_years or facility_mechanics.maturity_years}-year amortization.",
+            f"Revolver/ABL mechanics: status {revolver_abl.status}; commitment {_currency(revolver_abl.commitment)}; drawn amount {_currency(revolver_abl.drawn_amount)}; borrowing base {_currency_optional(revolver_abl.borrowing_base)}; availability {_currency_optional(revolver_abl.availability)}; commitment fee {revolver_abl.commitment_fee_bps if revolver_abl.commitment_fee_bps is not None else 'N/A'} bps / {_currency_optional(revolver_abl.commitment_fee)}; cash interest {_currency_optional(revolver_abl.cash_interest)} at {revolver_abl.cash_interest_rate or 'N/A'}.",
+            revolver_abl.explanation,
             *facility_mechanics.blocking_issues,
         ],
         "loan_purpose": [case.request.purpose],
@@ -2544,6 +2566,7 @@ def analyze_case(
         capacity=capacity,
         facility_protection=facility_protection,
         borrowing_base=borrowing_base,
+        revolver_abl=revolver_abl,
         pricing=pricing,
         scorecard=scorecard,
         scenarios=scenarios,

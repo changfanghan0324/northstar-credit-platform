@@ -205,7 +205,10 @@ def test_borrowing_base_is_policy_capped_and_binds_asset_based_capacity() -> Non
         {
             "facility_type": "asset_based",
             "security_type": "asset_based",
+            "amortization_type": "revolver",
             "amount": money(1_000_000_000).model_dump(),
+            "initial_drawn_amount": money(200_000_000).model_dump(),
+            "commitment_fee_bps": 100,
         }
     )
     raw["borrowing_base"] = {
@@ -241,6 +244,59 @@ def test_borrowing_base_is_policy_capped_and_binds_asset_based_capacity() -> Non
     assert result.capacity.collateral is not None
     assert result.capacity.collateral.amount_minor == 887_500_000
     assert result.borrowing_base.binding_constraint == "borrowing_base"
+    revolver_abl = result.revolver_abl
+    assert revolver_abl.status == "calculated"
+    assert revolver_abl.commitment.amount_minor == 1_000_000_000
+    assert revolver_abl.drawn_amount.amount_minor == 200_000_000
+    assert revolver_abl.borrowing_base is not None
+    assert revolver_abl.borrowing_base.amount_minor == 887_500_000
+    assert revolver_abl.availability is not None
+    assert revolver_abl.availability.amount_minor == 687_500_000
+    assert revolver_abl.commitment_fee is not None
+    assert revolver_abl.commitment_fee.amount_minor == 8_000_000
+    assert revolver_abl.cash_interest is not None
+    assert revolver_abl.cash_interest.amount_minor == 16_000_000
+
+
+def test_revolver_availability_is_commitment_limited_and_missing_abl_inputs_block() -> (
+    None
+):
+    case = load_demo_case("stable-manufacturer")
+    revolver = case.model_copy(
+        update={
+            "request": case.request.model_copy(
+                update={
+                    "facility_type": "revolver",
+                    "security_type": "secured",
+                    "amortization_type": "revolver",
+                    "amount": money(1_000_000_000),
+                    "initial_drawn_amount": money(250_000_000),
+                    "commitment_fee_bps": 50,
+                }
+            )
+        }
+    )
+    result = analyze_case(revolver)
+    view = result.revolver_abl
+    assert view.status == "calculated"
+    assert view.borrowing_base is None
+    assert view.availability is not None
+    assert view.availability.amount_minor == 750_000_000
+    assert view.commitment_fee is not None
+    assert view.commitment_fee.amount_minor == 3_750_000
+
+    missing_abl = revolver.model_copy(
+        update={
+            "request": revolver.request.model_copy(
+                update={"facility_type": "asset_based", "security_type": "asset_based"}
+            ),
+            "borrowing_base": None,
+        }
+    )
+    blocked = analyze_case(missing_abl)
+    assert blocked.revolver_abl.status == "blocked"
+    assert blocked.revolver_abl.availability is None
+    assert blocked.capacity.recommended.amount_minor == 0
 
 
 def test_unsecured_borrowing_base_not_applicable_and_collateral_does_not_change_grade() -> (

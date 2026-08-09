@@ -44,7 +44,11 @@ v6-02 through v6-08 are finished.
   verified). Phase commit is `v6-05-add-bullet-exit-tests`. Claude Opus 5
   High challenge `ddd0fb7f-cfbc-4d58-84ea-45c575b880a0` (PASS; no blocking
   findings).
-- **v6-06 through v6-08:** pending; no completion claim is made for those
+- **v6-06 — Revolver and ABL mechanics:** production verification is recorded
+  below; phase commit is `v6-06-add-revolver-abl-model`. Claude Opus 5 High
+  challenge `e1424c55-8110-449d-bae6-0b76e6983ce1` (PASS; no blocking
+  findings).
+- **v6-07 through v6-08:** pending; no completion claim is made for those
   phases.
 
 ## Verification at release authoring
@@ -82,6 +86,13 @@ v6-02 through v6-08 are finished.
   PDFs, and a clean Vercel runtime-error check. The five-year bullet maturity
   fields and severe no-refinancing outcome are covered by local unit and API
   integration tests.
+- v6-06 verification: 130 Python tests passed; total coverage 93.13%; strict
+  Mypy, Ruff, TypeScript, ESLint, and Next production build passed; Playwright
+  passed 11 tests with 1 intentional mobile skip. Production smoke covered
+  English and Traditional Chinese routes, `/health`, `/runtime`, and
+  `/demo-cases`, all three demo outcomes and mechanics, six detailed bilingual
+  PDFs, and a clean Vercel runtime-error check. The revolver/ABL contract is
+  covered by unit tests and bilingual API/PDF integration evidence.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

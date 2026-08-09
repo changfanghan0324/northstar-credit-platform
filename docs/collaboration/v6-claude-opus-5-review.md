@@ -201,3 +201,27 @@ Model: `claude-opus-5` (High effort; independent supplied-summary review)
 The challenge was a supplied-summary review and did not inspect the repository
 or production directly. Its verdict is paired with the executable local gate
 and the production smoke check recorded in the release status.
+
+## v6-06 — Revolver and ABL mechanics
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Challenge
+
+- Session: `e1424c55-8110-449d-bae6-0b76e6983ce1`
+- Verdict: **PASS — v6-06 approved pending production verification**.
+- No blocking findings. The reviewer accepted the single typed liquidity view,
+  the commitment/drawn/base/availability distinction, fee and cash-interest
+  separation, ABL blocking behavior, and downstream capacity/scenario linkage.
+
+### Non-blocking follow-ups
+
+- Keep explicit over-advance, zero-commitment/fully-drawn, and fee-boundary
+  regression cases.
+- Document and test missing-ABL blocked text in both memo locales and retain
+  the single RateDecision identity check for cash interest.
+
+The challenge was a supplied-summary review and did not inspect the repository
+or production directly. Its verdict is paired with the executable local gate
+and the production smoke check recorded in the release status.

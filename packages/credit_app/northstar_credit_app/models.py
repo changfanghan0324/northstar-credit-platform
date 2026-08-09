@@ -754,6 +754,24 @@ class BorrowingBaseView(ContractModel):
     policy_notice: str
 
 
+class RevolverAblView(ContractModel):
+    """One visible contract for revolver and ABL liquidity mechanics."""
+
+    applicable: bool
+    status: Literal["calculated", "blocked", "not_applicable"]
+    facility_type: Literal["term_loan", "revolver", "asset_based"]
+    commitment: MoneyValue
+    drawn_amount: MoneyValue
+    undrawn_commitment: MoneyValue
+    borrowing_base: MoneyValue | None
+    availability: MoneyValue | None
+    commitment_fee_bps: int | None
+    commitment_fee: MoneyValue | None
+    cash_interest: MoneyValue | None
+    cash_interest_rate: str | None
+    explanation: str
+
+
 class PricingView(ContractModel):
     status: Literal["available", "blocked"] = "available"
     reference_base_rate: str
@@ -1046,6 +1064,7 @@ class AnalysisResult(ContractModel):
     capacity: CapacityView
     facility_protection: FacilityProtectionView
     borrowing_base: BorrowingBaseView
+    revolver_abl: "RevolverAblView"
     pricing: PricingView
     scorecard: ScorecardView
     scenarios: list[ScenarioView]

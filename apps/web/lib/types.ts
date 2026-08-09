@@ -325,6 +325,21 @@ export type Analysis = {
     binding_constraint: string;
     policy_notice: string;
   };
+  revolver_abl: {
+    applicable: boolean;
+    status: "calculated" | "blocked" | "not_applicable";
+    facility_type: string;
+    commitment: Money;
+    drawn_amount: Money;
+    undrawn_commitment: Money;
+    borrowing_base: Money | null;
+    availability: Money | null;
+    commitment_fee_bps: number | null;
+    commitment_fee: Money | null;
+    cash_interest: Money | null;
+    cash_interest_rate: string | null;
+    explanation: string;
+  };
   pricing: {
     status: "available" | "blocked";
     reference_base_rate: string;

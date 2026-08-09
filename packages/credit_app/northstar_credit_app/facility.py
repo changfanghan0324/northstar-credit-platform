@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from northstar_policy import CreditPolicy
 
@@ -12,7 +13,9 @@ from .models import (
     FacilityProtectionView,
     MoneyValue,
     PricingView,
+    RateDecisionView,
     ResolvedFacilityMechanics,
+    RevolverAblView,
     ScorecardView,
 )
 
@@ -156,6 +159,94 @@ def calculate_borrowing_base(
             else "requested_amount"
         ),
         policy_notice="Illustrative policy advance rates; not a lending commitment.",
+    )
+
+
+def calculate_revolver_abl(
+    mechanics: ResolvedFacilityMechanics,
+    borrowing_base: BorrowingBaseView,
+    rate_decision: RateDecisionView,
+) -> RevolverAblView:
+    """Resolve commitment, draw, base, availability, fees, and cash interest.
+
+    A committed revolver has commitment-limited availability. An ABL has the
+    lower of commitment and the eligible borrowing base, less drawn amount.
+    The two liquidity limits remain separate so undrawn commitment cannot be
+    presented as borrowing-base liquidity.
+    """
+
+    template = mechanics.commitment
+    commitment_minor = mechanics.commitment.amount_minor
+    drawn_minor = mechanics.initial_drawn.amount_minor
+    undrawn_minor = max(0, commitment_minor - drawn_minor)
+    applicable = mechanics.facility_type in {"revolver", "asset_based"}
+    is_abl = mechanics.facility_type == "asset_based"
+    base = borrowing_base.borrowing_base if is_abl else None
+    status: Literal["calculated", "blocked", "not_applicable"]
+    if not applicable:
+        status = "not_applicable"
+    elif mechanics.status == "blocked" or (
+        is_abl and borrowing_base.status == "blocked"
+    ):
+        status = "blocked"
+    else:
+        status = "calculated"
+    if status == "blocked":
+        availability = None
+    else:
+        limit_minor = (
+            min(commitment_minor, base.amount_minor) if base else commitment_minor
+        )
+        availability = _money(max(0, limit_minor - drawn_minor), template)
+    fee_bps = mechanics.commitment_fee_bps if applicable else None
+    fee = (
+        _money(
+            int(
+                (Decimal(undrawn_minor) * Decimal(fee_bps) / Decimal(10_000)).quantize(
+                    Decimal(1), rounding=ROUND_HALF_UP
+                )
+            ),
+            template,
+        )
+        if fee_bps is not None and status != "blocked"
+        else None
+    )
+    cash_interest = (
+        _money(
+            int(
+                (
+                    Decimal(drawn_minor) * Decimal(rate_decision.underwritten_rate)
+                ).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+            ),
+            template,
+        )
+        if applicable and rate_decision.status == "available" and status != "blocked"
+        else None
+    )
+    return RevolverAblView(
+        applicable=applicable,
+        status=status,
+        facility_type=mechanics.facility_type,
+        commitment=template,
+        drawn_amount=mechanics.initial_drawn,
+        undrawn_commitment=_money(undrawn_minor, template),
+        borrowing_base=base,
+        availability=availability,
+        commitment_fee_bps=fee_bps,
+        commitment_fee=fee,
+        cash_interest=cash_interest,
+        cash_interest_rate=(
+            rate_decision.underwritten_rate if applicable and cash_interest else None
+        ),
+        explanation=(
+            "ABL availability is blocked until borrowing-base inputs are supplied."
+            if status == "blocked" and is_abl
+            else "Revolver availability is limited to commitment less drawn amount."
+            if mechanics.facility_type == "revolver"
+            else "ABL availability is the lower of commitment and borrowing base, less drawn amount."
+            if applicable
+            else "Revolver and ABL mechanics are not applicable to this facility."
+        ),
     )
 
 
