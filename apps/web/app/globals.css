@@ -2272,6 +2272,29 @@ summary:focus-visible {
   color: var(--muted);
   border-bottom: 1px solid var(--line);
 }
+.provenance-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.provenance-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--wash);
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+.provenance-acknowledgement input {
+  margin-top: 2px;
+}
+@media (max-width: 900px) {
+  .provenance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .risk-evidence-card {
   grid-column: 1/-1;
   padding: 18px !important;

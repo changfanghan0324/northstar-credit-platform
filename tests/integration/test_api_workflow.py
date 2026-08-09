@@ -25,6 +25,9 @@ def test_demo_case_full_api_workflow_and_session_isolation() -> None:
         assert opened.json()["analysis"]["decision"]["outcome"] == (
             "Approve with conditions"
         )
+        provenance = opened.json()["analysis"]["provenance"]
+        assert provenance["counts"]["template-derived"] == 20
+        assert provenance["inherited_percentage"] == "100.00%"
 
         for surface in (
             "analysis",
@@ -41,6 +44,22 @@ def test_demo_case_full_api_workflow_and_session_isolation() -> None:
         assert pdf.status_code == 200
         assert pdf.headers["content-type"] == "application/pdf"
         assert pdf.content.startswith(b"%PDF-1.4")
+
+        for locale, expected_text in (
+            ("en", "Data Provenance"),
+            ("zh-TW", "資料來源分類"),
+        ):
+            detailed = client.get(
+                f"/cases/{case_id}/memo.pdf?locale={locale}&detail=detailed",
+                headers=headers,
+            )
+            assert detailed.status_code == 200
+            text = "\n".join(
+                page.extract_text() or ""
+                for page in PdfReader(BytesIO(detailed.content)).pages
+            )
+            assert expected_text in text
+            assert "template-derived 20 (100.00%)" in text
 
         hidden = client.get(
             f"/cases/{case_id}",
@@ -69,6 +88,31 @@ def test_create_save_then_analyze_has_no_partial_output() -> None:
             "Integration Synthetic, Inc."
         )
         assert analyzed.json()["capacity"]["recommended"]["amount_minor"] == 900_000_000
+
+
+def test_validation_exposes_provenance_and_evidence_completion() -> None:
+    with TestClient(app) as client:
+        owner = {"X-Northstar-Session": f"integration-completion-{uuid4()}"}
+        template = client.get("/demo-cases/stable-manufacturer/template").json()
+        template["provenance"] = {
+            "template_slug": "stable-manufacturer",
+            "fields": {"borrower.legal_name": "user-entered"},
+            "acknowledged_template_inheritance": False,
+        }
+        response = client.post("/cases/validate-input", headers=owner, json=template)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["provenance"]["inherited_percentage"] == "95.00%"
+        assert payload["provenance"]["acknowledgement_required"] is True
+        assert (
+            payload["completion"]["required_completed"]
+            == payload["completion"]["required_total"]
+        )
+        assert (
+            payload["completion"]["evidence_completed"]
+            == payload["completion"]["evidence_total"]
+        )
+        assert payload["completion"]["analysis_ready"] is False
 
 
 def test_case_lifecycle_list_duplicate_archive_update_rerun_delete() -> None:

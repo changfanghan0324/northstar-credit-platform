@@ -172,3 +172,33 @@ Evidence:
 - Final local gate: 130 Python tests, 93.13% coverage, strict Mypy/Ruff,
   TypeScript, ESLint, Next build, and Playwright 11 passed / 1 intentional
   mobile skip.
+
+## v6-07 — Provenance and evidence-based completion
+
+Date: 2026-08-08
+Status: implementation complete; phase review complete; production verification complete
+
+Decision: classify every material input with one closed source label and expose
+the counts, percentages, inherited share, warnings, and acknowledgement state as
+one typed provenance object. For non-demo cases, an omitted material label is
+explicitly unclassified and blocks readiness. Replace wizard-step completion with
+required-field, evidence, optional-section, and `analysis_ready` dimensions;
+analysis readiness additionally requires a scorecard grade and any required
+template acknowledgement. Carry the same provenance and completion values through
+validation, analysis, memo metadata, and both detailed PDF locales.
+
+Evidence:
+
+- `docs/architecture/provenance-completion-contract.md`
+- Unit tests for closed taxonomy, exact 75%/70% boundaries, acknowledgement,
+  unclassified non-demo fields, and evidence completion.
+- API/PDF integration assertions for 20 template-derived fields and 100.00%
+  inheritance in English and Traditional Chinese output.
+- Playwright Review-page test checks source counts, evidence completion, and the
+  acknowledgement checkbox on desktop and mobile.
+- Claude Opus 5 High initial challenge `821d7747-de3d-4591-9f12-522f635a91d1`
+  (FAIL; remediated) and re-challenge `941f9c2e-e94a-4df7-9f03-48a307b23de1`
+  (PASS pending final green gate).
+- Final local gate: 133 Python tests, 93.30% coverage, strict Mypy/Ruff,
+  TypeScript, ESLint, Next build, and Playwright 13 passed / 1 intentional
+  mobile skip.

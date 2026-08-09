@@ -110,6 +110,28 @@ test("demo lifecycle exposes professional workspace pages and both modes", async
   await expect(page.locator(".solver-grid article")).toHaveCount(6);
 });
 
+test("custom case review exposes provenance and evidence completion", async ({
+  page,
+}) => {
+  await page.goto("/app/cases/new");
+  await expect(
+    page.getByRole("heading", { name: "Create a custom credit case" }),
+  ).toBeVisible();
+  for (let index = 0; index < 6; index += 1) {
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Provenance and completion" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Required fields/)).toBeVisible();
+  await expect(page.getByText("Template-derived")).toBeVisible();
+  await expect(page.getByText(/This is not a step percentage/)).toBeVisible();
+  const acknowledgement = page.getByRole("checkbox");
+  await expect(acknowledgement).toBeVisible();
+  await acknowledgement.check();
+  await expect(acknowledgement).toBeChecked();
+});
+
 test("analyst money scales preserve canonical cents across entry and paste", async ({
   page,
   isMobile,

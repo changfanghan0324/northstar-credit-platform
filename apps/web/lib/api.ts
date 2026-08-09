@@ -5,8 +5,10 @@ import type {
   CaseInput,
   CaseSummary,
   CaseVersionSummary,
+  CompletionSummary,
   DemoCase,
   Money,
+  ProvenanceSummary,
   RuntimeInfo,
 } from "./types";
 
@@ -65,6 +67,8 @@ export const api = {
       missing: string[];
       warnings: string[];
       estimated_confidence: number;
+      provenance: ProvenanceSummary;
+      completion: CompletionSummary;
     }>("/cases/validate-input", {
       method: "POST",
       body: JSON.stringify(input),

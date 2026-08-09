@@ -292,6 +292,8 @@ def _validation_payload(
         ],
         "currency": case.request.amount.currency,
         "estimated_confidence": result.scorecard.confidence_score,
+        "provenance": result.provenance.model_dump(mode="json"),
+        "completion": result.completion.model_dump(mode="json"),
     }
 
 

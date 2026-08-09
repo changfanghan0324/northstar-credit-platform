@@ -5,12 +5,14 @@ from decimal import Decimal
 
 import pytest
 from northstar_credit_app import analyze_case
+from northstar_credit_app.analysis import MATERIAL_PROVENANCE_FIELDS
 from northstar_credit_app.demo import load_demo_case
 from northstar_credit_app.models import (
     BusinessRiskEvidenceInput,
     CaseInput,
     FinancialPeriodInput,
     FinancialSpreadInput,
+    InputProvenance,
     MoneyValue,
     NormalizationAdjustmentInput,
 )
@@ -196,6 +198,82 @@ def test_business_risk_evidence_cannot_be_blank() -> None:
             confidence="medium",
             last_updated=datetime.now(UTC),
         )
+
+
+def test_provenance_and_completion_are_explicit_and_not_step_percentages() -> None:
+    case = load_demo_case("stable-manufacturer").model_copy(
+        update={
+            "provenance": InputProvenance(
+                template_slug="stable-manufacturer",
+                fields={
+                    "borrower.legal_name": "user-entered",
+                    "request.amount": "user-entered",
+                },
+            )
+        }
+    )
+    result = analyze_case(case)
+    assert result.provenance.template_slug == "stable-manufacturer"
+    assert result.provenance.counts["user-entered"] == 2
+    assert result.provenance.inherited_percentage == "90.00%"
+    assert result.provenance.acknowledgement_required is True
+    assert result.provenance.warnings
+    assert result.completion.required_completed == result.completion.required_total
+    assert result.completion.evidence_completed == result.completion.evidence_total
+    assert result.completion.analysis_ready is False
+    acknowledged = case.model_copy(
+        update={
+            "provenance": case.provenance.model_copy(
+                update={"acknowledged_template_inheritance": True}
+            )
+        }
+    )
+    acknowledged_result = analyze_case(acknowledged)
+    assert acknowledged_result.completion.analysis_ready is True
+
+
+def test_provenance_taxonomy_and_acknowledgement_boundaries_fail_closed() -> None:
+    with pytest.raises(ValueError):
+        InputProvenance(fields={"borrower.legal_name": "external-system"})
+
+    base = load_demo_case("stable-manufacturer")
+    exactly_75 = InputProvenance(
+        template_slug="stable-manufacturer",
+        fields={
+            field: ("user-entered" if index < 5 else "template-derived")
+            for index, field in enumerate(MATERIAL_PROVENANCE_FIELDS)
+        },
+    )
+    at_boundary = analyze_case(base.model_copy(update={"provenance": exactly_75}))
+    assert at_boundary.provenance.inherited_percentage == "75.00%"
+    assert at_boundary.provenance.acknowledgement_required is True
+    assert at_boundary.completion.analysis_ready is False
+
+    below_boundary = InputProvenance(
+        template_slug="stable-manufacturer",
+        fields={
+            field: ("user-entered" if index < 6 else "template-derived")
+            for index, field in enumerate(MATERIAL_PROVENANCE_FIELDS)
+        },
+    )
+    below = analyze_case(base.model_copy(update={"provenance": below_boundary}))
+    assert below.provenance.inherited_percentage == "70.00%"
+    assert below.provenance.acknowledgement_required is False
+    assert below.completion.analysis_ready is True
+
+    legacy_template = base.model_copy(
+        update={
+            "slug": "custom-provenance-boundary",
+            "provenance": InputProvenance(
+                template_slug="stable-manufacturer",
+                fields={"borrower.legal_name": "user-entered"},
+                acknowledged_template_inheritance=True,
+            ),
+        }
+    )
+    legacy_result = analyze_case(legacy_template)
+    assert legacy_result.provenance.unclassified_material_fields
+    assert legacy_result.completion.analysis_ready is False
 
 
 def test_borrowing_base_is_policy_capped_and_binds_asset_based_capacity() -> None:

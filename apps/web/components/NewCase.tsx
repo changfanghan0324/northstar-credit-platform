@@ -17,8 +17,12 @@ import { type Language, prefix } from "@/lib/i18n";
 import { formatMoneyInput, parseMoneyInput } from "@/lib/money";
 import type {
   CaseInput,
+  CompletionSummary,
   DebtInstrument,
+  InputProvenance,
   Money,
+  ProvenanceSource,
+  ProvenanceSummary,
   ScenarioInput,
 } from "@/lib/types";
 
@@ -27,7 +31,42 @@ type ValidationPreview = {
   missing: string[];
   warnings: string[];
   estimated_confidence: number;
+  provenance: ProvenanceSummary;
+  completion: CompletionSummary;
 };
+
+const materialProvenanceFields = [
+  "borrower.legal_name",
+  "borrower.industry",
+  "borrower.headquarters",
+  "borrower.description",
+  "request.amount",
+  "request.purpose",
+  "request.facility_type",
+  "request.rate_type",
+  "request.maturity_years",
+  "financials.revenue",
+  "financials.ebit",
+  "financials.cfo",
+  "financials.cash_interest",
+  "financials.scheduled_principal",
+  "financials.long_term_debt",
+  "debt_instruments",
+  "business_risk.factor_evidence",
+  "scenarios.base",
+  "scenarios.downside",
+  "scenarios.severe",
+] as const;
+
+function templateProvenance(templateSlug: string): InputProvenance {
+  return {
+    template_slug: templateSlug,
+    fields: Object.fromEntries(
+      materialProvenanceFields.map((field) => [field, "template-derived"]),
+    ) as Record<string, ProvenanceSource>,
+    acknowledged_template_inheritance: false,
+  };
+}
 
 const steps = [
   "Borrower",
@@ -184,6 +223,7 @@ export function NewCase({ language }: { language: Language }) {
   const [error, setError] = useState("");
   const [review, setReview] = useState<ValidationPreview | null>(null);
   const [template, setTemplate] = useState("stable-manufacturer");
+  const [templateReload, setTemplateReload] = useState(0);
   const [entryMode, setEntryMode] = useState<"guided" | "analyst">("guided");
   const initialized = useRef(false);
   const draftKey = `northstar-case-draft-${language}`;
@@ -195,7 +235,10 @@ export function NewCase({ language }: { language: Language }) {
       if (saved) {
         try {
           const parsed = JSON.parse(saved) as CaseInput;
-          Promise.resolve(parsed).then(setInput);
+          Promise.resolve({
+            ...parsed,
+            provenance: parsed.provenance ?? templateProvenance(template),
+          }).then(setInput);
           return;
         } catch {
           window.sessionStorage.removeItem(draftKey);
@@ -204,9 +247,14 @@ export function NewCase({ language }: { language: Language }) {
     }
     api
       .demoTemplate(template)
-      .then((value) => setInput(structuredClone(value)))
+      .then((value) =>
+        setInput({
+          ...structuredClone(value),
+          provenance: templateProvenance(template),
+        }),
+      )
       .catch((e) => setError(String(e)));
-  }, [draftKey, template]);
+  }, [draftKey, template, templateReload]);
   useEffect(() => {
     if (input) window.sessionStorage.setItem(draftKey, JSON.stringify(input));
   }, [draftKey, input]);
@@ -220,14 +268,41 @@ export function NewCase({ language }: { language: Language }) {
         );
     }
   }, [input, step]);
-  function patchInput(update: Partial<CaseInput>) {
-    setInput((current) => (current ? { ...current, ...update } : current));
+  function patchInput(update: Partial<CaseInput>, changedPaths: string[] = []) {
+    setInput((current) => {
+      if (!current) return current;
+      const provenance =
+        update.provenance ?? current.provenance ?? templateProvenance(template);
+      return {
+        ...current,
+        ...update,
+        provenance: changedPaths.length
+          ? {
+              ...provenance,
+              fields: {
+                ...provenance.fields,
+                ...Object.fromEntries(
+                  changedPaths.map((path) => [path, "user-entered"]),
+                ),
+              },
+              acknowledged_template_inheritance:
+                provenance.acknowledged_template_inheritance,
+            }
+          : provenance,
+      };
+    });
   }
   function patchBorrower(key: keyof CaseInput["borrower"], value: string) {
-    if (input) patchInput({ borrower: { ...input.borrower, [key]: value } });
+    if (input)
+      patchInput({ borrower: { ...input.borrower, [key]: value } }, [
+        `borrower.${key}`,
+      ]);
   }
   function patchRequest(key: keyof CaseInput["request"], value: unknown) {
-    if (input) patchInput({ request: { ...input.request, [key]: value } });
+    if (input)
+      patchInput({ request: { ...input.request, [key]: value } }, [
+        `request.${key}`,
+      ]);
   }
   function percentDisplay(value: string | number): string {
     if (entryMode === "analyst") return String(value);
@@ -259,33 +334,39 @@ export function NewCase({ language }: { language: Language }) {
     const current = input.financials[key] as Money;
     const amountMinor = parsedAmount(value, current);
     if (amountMinor === null) return;
-    patchInput({
-      financials: {
-        ...input.financials,
-        [key]: {
-          ...current,
-          amount_minor: amountMinor,
+    patchInput(
+      {
+        financials: {
+          ...input.financials,
+          [key]: {
+            ...current,
+            amount_minor: amountMinor,
+          },
         },
       },
-    });
+      [`financials.${key}`],
+    );
   }
   function patchRisk(key: string, value: string | string[]) {
     if (!input) return;
     const existing = input.business_risk.factor_evidence?.[key];
-    patchInput({
-      business_risk: {
-        ...input.business_risk,
-        [key]: value,
-        ...(typeof value === "string" && existing
-          ? {
-              factor_evidence: {
-                ...input.business_risk.factor_evidence,
-                [key]: { ...existing, score: value },
-              },
-            }
-          : {}),
+    patchInput(
+      {
+        business_risk: {
+          ...input.business_risk,
+          [key]: value,
+          ...(typeof value === "string" && existing
+            ? {
+                factor_evidence: {
+                  ...input.business_risk.factor_evidence,
+                  [key]: { ...existing, score: value },
+                },
+              }
+            : {}),
+        },
       },
-    });
+      [`business_risk.${key}`],
+    );
   }
   function patchRiskEvidence(key: string, update: Record<string, string>) {
     if (!input) return;
@@ -296,16 +377,19 @@ export function NewCase({ language }: { language: Language }) {
       ...update,
       last_updated: new Date().toISOString(),
     };
-    patchInput({
-      business_risk: {
-        ...input.business_risk,
-        ...(update.score ? { [key]: update.score } : {}),
-        factor_evidence: {
-          ...input.business_risk.factor_evidence,
-          [key]: next,
+    patchInput(
+      {
+        business_risk: {
+          ...input.business_risk,
+          ...(update.score ? { [key]: update.score } : {}),
+          factor_evidence: {
+            ...input.business_risk.factor_evidence,
+            [key]: next,
+          },
         },
       },
-    });
+      [`business_risk.factor_evidence`],
+    );
   }
   function patchScenario(
     name: keyof CaseInput["scenarios"],
@@ -313,12 +397,15 @@ export function NewCase({ language }: { language: Language }) {
     value: string,
   ) {
     if (!input) return;
-    patchInput({
-      scenarios: {
-        ...input.scenarios,
-        [name]: { ...input.scenarios[name], [key]: value },
+    patchInput(
+      {
+        scenarios: {
+          ...input.scenarios,
+          [name]: { ...input.scenarios[name], [key]: value },
+        },
       },
-    });
+      [`scenarios.${name}.${key}`],
+    );
   }
   function addDebt() {
     if (!input) return;
@@ -336,15 +423,20 @@ export function NewCase({ language }: { language: Language }) {
       collateral: "None",
       schedule_completeness: "unspecified",
     };
-    patchInput({ debt_instruments: [...input.debt_instruments, blank] });
+    patchInput({ debt_instruments: [...input.debt_instruments, blank] }, [
+      "debt_instruments",
+    ]);
   }
   function patchDebt(index: number, update: Partial<DebtInstrument>) {
     if (!input) return;
-    patchInput({
-      debt_instruments: input.debt_instruments.map((item, i) =>
-        i === index ? { ...item, ...update } : item,
-      ),
-    });
+    patchInput(
+      {
+        debt_instruments: input.debt_instruments.map((item, i) =>
+          i === index ? { ...item, ...update } : item,
+        ),
+      },
+      ["debt_instruments"],
+    );
   }
 
   async function run() {
@@ -357,6 +449,16 @@ export function NewCase({ language }: { language: Language }) {
         throw new Error(
           `${zh ? "缺少或無效的關鍵輸入" : "Missing or invalid critical inputs"}: ${preview.missing.join(", ")}`,
         );
+      if (
+        preview.provenance.acknowledgement_required &&
+        !input.provenance.acknowledged_template_inheritance
+      ) {
+        throw new Error(
+          zh
+            ? "請先確認大部分資料仍承襲自範本，再執行分析。"
+            : "Acknowledge that most material values remain inherited from the selected template before running analysis.",
+        );
+      }
       const payload = {
         ...input,
         slug: `custom-${crypto.randomUUID().slice(0, 8)}`,
@@ -474,9 +576,13 @@ export function NewCase({ language }: { language: Language }) {
         </div>
         <div className="wizard-progress">
           <span>
-            {zh
-              ? `必要欄位 ${requiredCompleted}/${requiredChecks.length}（${completion}%）`
-              : `${requiredCompleted}/${requiredChecks.length} required fields (${completion}%)`}
+            {review
+              ? zh
+                ? `必要欄位 ${review.completion.required_completed}/${review.completion.required_total}；證據 ${review.completion.evidence_completed}/${review.completion.evidence_total}；分析${review.completion.analysis_ready ? "已就緒" : "未就緒"}`
+                : `Required ${review.completion.required_completed}/${review.completion.required_total} · evidence ${review.completion.evidence_completed}/${review.completion.evidence_total} · analysis ${review.completion.analysis_ready ? "ready" : "not ready"}`
+              : zh
+                ? `必要欄位 ${requiredCompleted}/${requiredChecks.length}（${completion}%）`
+                : `${requiredCompleted}/${requiredChecks.length} required fields (${completion}%)`}
           </span>
           <span>
             {zh
@@ -559,7 +665,9 @@ export function NewCase({ language }: { language: Language }) {
                   <input
                     type="date"
                     value={input.data_as_of}
-                    onChange={(e) => patchInput({ data_as_of: e.target.value })}
+                    onChange={(e) =>
+                      patchInput({ data_as_of: e.target.value }, ["data_as_of"])
+                    }
                   />
                 </label>
                 <label className="wide">
@@ -772,12 +880,17 @@ export function NewCase({ language }: { language: Language }) {
                       String(input.financials.cash_availability_factor),
                     )}
                     onChange={(e) =>
-                      patchInput({
-                        financials: {
-                          ...input.financials,
-                          cash_availability_factor: percentValue(e.target.value),
+                      patchInput(
+                        {
+                          financials: {
+                            ...input.financials,
+                            cash_availability_factor: percentValue(
+                              e.target.value,
+                            ),
+                          },
                         },
-                      })
+                        ["financials.cash_availability_factor"],
+                      )
                     }
                   />
                 </label>
@@ -793,12 +906,15 @@ export function NewCase({ language }: { language: Language }) {
                     inputMode="decimal"
                     value={percentDisplay(String(input.financials.tax_rate))}
                     onChange={(e) =>
-                      patchInput({
-                        financials: {
-                          ...input.financials,
-                          tax_rate: percentValue(e.target.value),
+                      patchInput(
+                        {
+                          financials: {
+                            ...input.financials,
+                            tax_rate: percentValue(e.target.value),
+                          },
                         },
-                      })
+                        ["financials.tax_rate"],
+                      )
                     }
                   />
                 </label>
@@ -974,7 +1090,9 @@ export function NewCase({ language }: { language: Language }) {
                           {zh ? "完整排程" : "Complete schedule"}
                         </option>
                         <option value="partial">
-                          {zh ? "部分排程（需殘餘處理）" : "Partial schedule (residual)"}
+                          {zh
+                            ? "部分排程（需殘餘處理）"
+                            : "Partial schedule (residual)"}
                         </option>
                       </select>
                     </label>
@@ -1011,11 +1129,14 @@ export function NewCase({ language }: { language: Language }) {
                     className="button ghost"
                     type="button"
                     onClick={() =>
-                      patchInput({
-                        debt_instruments: input.debt_instruments.filter(
-                          (_, i) => i !== index,
-                        ),
-                      })
+                      patchInput(
+                        {
+                          debt_instruments: input.debt_instruments.filter(
+                            (_, i) => i !== index,
+                          ),
+                        },
+                        ["debt_instruments"],
+                      )
                     }
                   >
                     {zh ? "移除工具" : "Remove instrument"}
@@ -1208,7 +1329,11 @@ export function NewCase({ language }: { language: Language }) {
                           inputMode="decimal"
                           value={percentDisplay(input.scenarios[name][key])}
                           onChange={(e) =>
-                            patchScenario(name, key, percentValue(e.target.value))
+                            patchScenario(
+                              name,
+                              key,
+                              percentValue(e.target.value),
+                            )
                           }
                         />
                       </label>
@@ -1236,27 +1361,39 @@ export function NewCase({ language }: { language: Language }) {
                     type="button"
                     className="button secondary"
                     onClick={() =>
-                      setInput((current) =>
-                        current
-                          ? {
-                              ...current,
-                              borrower: {
-                                ...current.borrower,
-                                legal_name: "",
-                              },
-                            }
-                          : current,
+                      patchInput(
+                        {
+                          borrower: {
+                            ...input.borrower,
+                            legal_name: "",
+                          },
+                          provenance: {
+                            ...input.provenance,
+                            template_slug: null,
+                            acknowledged_template_inheritance: true,
+                            fields: Object.fromEntries(
+                              materialProvenanceFields.map((field) => [
+                                field,
+                                "user-entered",
+                              ]),
+                            ) as Record<string, ProvenanceSource>,
+                          },
+                        },
+                        ["borrower.legal_name", ...materialProvenanceFields],
                       )
                     }
                   >
-                    {zh ? "清除借款人名稱" : "Clear borrower name"}
+                    {zh ? "清除範本資料" : "Clear template values"}
                   </button>
                   <button
                     type="button"
                     className="button secondary"
                     onClick={() => {
+                      window.sessionStorage.removeItem(draftKey);
+                      initialized.current = false;
                       setInput(null);
                       setStep(0);
+                      setTemplateReload((value) => value + 1);
                     }}
                   >
                     {zh ? "重設為範本" : "Reset to template"}
@@ -1325,6 +1462,89 @@ export function NewCase({ language }: { language: Language }) {
                     : "Synthetic data only. A case is created only after validation passes."}
                 </p>
               </div>
+              {review && (
+                <article className="review-provenance panel">
+                  <h3>
+                    {zh ? "資料來源與完成度" : "Provenance and completion"}
+                  </h3>
+                  <p>
+                    {zh
+                      ? `目前仍承襲範本的重大輸入：${review.provenance.inherited_percentage}。這不是步驟百分比。`
+                      : `${review.provenance.inherited_percentage} of material inputs are still inherited from the selected template. This is not a step percentage.`}
+                  </p>
+                  {review.provenance.unclassified_material_fields.length > 0 && (
+                    <p className="error">
+                      {zh
+                        ? `尚未標記資料來源：${review.provenance.unclassified_material_fields.join("、")}`
+                        : `Material inputs missing provenance labels: ${review.provenance.unclassified_material_fields.join(", ")}`}
+                    </p>
+                  )}
+                  <p>
+                    {zh
+                      ? `必要欄位 ${review.completion.required_completed}/${review.completion.required_total}；證據 ${review.completion.evidence_completed}/${review.completion.evidence_total}；選填區段 ${review.completion.optional_completed}/${review.completion.optional_total}；分析${review.completion.analysis_ready ? "已就緒" : "未就緒"}。`
+                      : `Required fields ${review.completion.required_completed}/${review.completion.required_total}; evidence ${review.completion.evidence_completed}/${review.completion.evidence_total}; optional sections ${review.completion.optional_completed}/${review.completion.optional_total}; analysis ${review.completion.analysis_ready ? "ready" : "not ready"}.`}
+                  </p>
+                  <div className="provenance-grid">
+                    {(
+                      [
+                        [
+                          "template-derived",
+                          zh ? "範本衍生" : "Template-derived",
+                        ],
+                        ["user-entered", zh ? "使用者輸入" : "User-entered"],
+                        ["calculated", zh ? "計算值" : "Calculated"],
+                        ["imported", zh ? "匯入" : "Imported"],
+                        ["override", zh ? "覆寫" : "Override"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <div className="stat" key={key}>
+                        <span>{label}</span>
+                        <strong>
+                          {review.provenance.counts[key]} /{" "}
+                          {review.provenance.percentages[key]}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                  {review.provenance.warnings.map((warning) => (
+                    <p className="error" key={warning}>
+                      {warning}
+                    </p>
+                  ))}
+                  {review.completion.warnings
+                    .filter(
+                      (warning) =>
+                        !review.provenance.warnings.includes(warning),
+                    )
+                    .map((warning) => (
+                      <p className="error" key={warning}>
+                        {warning}
+                      </p>
+                    ))}
+                  {review.provenance.acknowledgement_required && (
+                    <label className="provenance-acknowledgement">
+                      <input
+                        type="checkbox"
+                        checked={
+                          input.provenance.acknowledged_template_inheritance
+                        }
+                        onChange={(event) =>
+                          patchInput({
+                            provenance: {
+                              ...input.provenance,
+                              acknowledged_template_inheritance:
+                                event.target.checked,
+                            },
+                          })
+                        }
+                      />
+                      {zh
+                        ? "我確認大部分資料仍承襲自所選範本，並會在產生備忘錄前完成覆核。"
+                        : "I acknowledge that most material values remain inherited from the selected template and will review them before memo generation."}
+                    </label>
+                  )}
+                </article>
+              )}
             </>
           )}
           {error && (

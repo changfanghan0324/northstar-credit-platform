@@ -1,13 +1,13 @@
 # Northstar current release status
 
-Status: **Portfolio Demo Mode release — v6 hardening in progress**
+Status: **Portfolio Demo Mode release — v6-07 production-verified; v6-08 pending**
 
 This is the single current release truth. Historical audits and debate logs remain in the repository for traceability but do not override this page.
 
 The [Northstar v6 — Final Credit Model Consistency](prompts/Northstar_v6_Final_Credit_Model_Consistency_Prompt.md)
 specification is being executed as eight independently tested and committed
-phases. v6-01 is production-verified; the product is not v6-complete until
-v6-02 through v6-08 are finished.
+phases. v6-01 through v6-07 are production-verified; the product is not
+v6-complete until v6-08 is finished.
 
 ## Release coordinates
 
@@ -48,8 +48,13 @@ v6-02 through v6-08 are finished.
   below; phase commit is `v6-06-add-revolver-abl-model`. Claude Opus 5 High
   challenge `e1424c55-8110-449d-bae6-0b76e6983ce1` (PASS; no blocking
   findings).
-- **v6-07 through v6-08:** pending; no completion claim is made for those
-  phases.
+- **v6-07 — Provenance and evidence-based completion:** production-verified in
+  Vercel deployment `dpl_AadQpGe2ZVipaPo9Jjva84znAakA` (READY; production
+  alias verified). Phase commit is `v6-07-add-provenance-and-completion`.
+  Claude Opus 5 High initial challenge
+  `821d7747-de3d-4591-9f12-522f635a91d1` was remediated; re-challenge
+  `941f9c2e-e94a-4df7-9f03-48a307b23de1` passed with no blocking findings.
+- **v6-08:** pending; no completion claim is made for that phase.
 
 ## Verification at release authoring
 
@@ -93,6 +98,18 @@ v6-02 through v6-08 are finished.
   `/demo-cases`, all three demo outcomes and mechanics, six detailed bilingual
   PDFs, and a clean Vercel runtime-error check. The revolver/ABL contract is
   covered by unit tests and bilingual API/PDF integration evidence.
+- v6-07 verification: 133 Python tests passed; total coverage 93.30%; strict
+  Mypy, Ruff, TypeScript, ESLint, and Next production build passed. Playwright
+  passed 13 tests with 1 intentional mobile skip. Production smoke after
+  `dpl_AadQpGe2ZVipaPo9Jjva84znAakA`: English and Traditional Chinese routes,
+  `/health`, `/runtime`, and `/demo-cases` returned 200; three demo opens
+  returned typed provenance/completion; five detailed PDF requests returned 200
+  and exceeded 1 KB, while the sixth correctly returned the configured
+  five-per-hour rate limit; a production validation case returned 95.00%
+  inherited data, acknowledgement required, and `analysis_ready=false`.
+  Browser production review showed provenance/completion, source counts,
+  acknowledgement, and no application error. Vercel runtime errors in the last
+  hour: none.
 - Earlier v5 production evidence remains in the historical audit documents;
   it does not override the phase-specific v6 record above.
 

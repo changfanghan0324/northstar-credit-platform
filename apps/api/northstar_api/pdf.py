@@ -121,6 +121,8 @@ ZH_TITLES = {
     "conditions_precedent": "先決條件",
     "monitoring": "監控",
     "data_limitations": "資料限制",
+    "data_provenance": "資料來源分類",
+    "completion_status": "完成度狀態",
     "analyst_sign_off": "分析師簽核",
     "reviewer_sign_off": "覆核人簽核",
 }
@@ -273,6 +275,19 @@ def _zh_sections(result: AnalysisResult) -> dict[str, list[str]]:
         "data_limitations": [
             "本案件使用合成資料，未執行真實文件、法規、制裁、詐欺或法律盡職調查。僅供教育用途。",
             "目前財務展開仍有資料完整性或調節限制；詳細狀態以 API 輸出為準。",
+        ],
+        "data_provenance": [
+            f"範本：{result.provenance.template_slug or '未宣告'}；仍承襲範本的重大輸入占比 {result.provenance.inherited_percentage}。",
+            "來源計數："
+            + "；".join(
+                f"{source} {result.provenance.counts[source]} ({result.provenance.percentages[source]})"
+                for source in result.provenance.counts
+            ),
+            *result.provenance.warnings,
+        ],
+        "completion_status": [
+            f"必要欄位 {result.completion.required_completed}/{result.completion.required_total}；證據 {result.completion.evidence_completed}/{result.completion.evidence_total}；選填區段 {result.completion.optional_completed}/{result.completion.optional_total}；分析就緒 {result.completion.analysis_ready}。",
+            *result.completion.warnings,
         ],
         "analyst_sign_off": [
             "分析人員：____________________",

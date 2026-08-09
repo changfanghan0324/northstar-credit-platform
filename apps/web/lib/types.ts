@@ -60,6 +60,34 @@ export type ScenarioInput = {
   working_capital_pct_revenue: string;
   maintenance_capex_pct_revenue: string;
 };
+export type ProvenanceSource =
+  "template-derived" | "user-entered" | "calculated" | "imported" | "override";
+export type InputProvenance = {
+  template_slug: string | null;
+  fields: Record<string, ProvenanceSource>;
+  acknowledged_template_inheritance: boolean;
+};
+export type ProvenanceSummary = {
+  template_slug: string | null;
+  counts: Record<ProvenanceSource, number>;
+  percentages: Record<ProvenanceSource, string>;
+  total_material_fields: number;
+  inherited_percentage: string;
+  unclassified_material_fields: string[];
+  acknowledgement_required: boolean;
+  warnings: string[];
+};
+export type CompletionSummary = {
+  required_completed: number;
+  required_total: number;
+  required_missing: string[];
+  evidence_completed: number;
+  evidence_total: number;
+  optional_completed: number;
+  optional_total: number;
+  warnings: string[];
+  analysis_ready: boolean;
+};
 export type DebtInstrument = {
   name: string;
   principal: Money;
@@ -112,6 +140,7 @@ export type CaseInput = {
   };
   scenarios: Record<"base" | "downside" | "severe", ScenarioInput>;
   data_as_of: string;
+  provenance: InputProvenance;
 };
 export type BorrowingBaseInput = {
   accounts_receivable: Record<string, Money | string>;
@@ -259,6 +288,8 @@ export type Analysis = {
     approved_ebit?: Money | null;
     approved_cfads_impact?: Money | null;
   };
+  provenance: ProvenanceSummary;
+  completion: CompletionSummary;
   capacity: {
     status: "available" | "blocked";
     recommendation_state?: "calculated" | "blocked";

@@ -42,6 +42,14 @@ SourceAuthority = Literal[
     "blocked",
 ]
 
+ProvenanceSource = Literal[
+    "template-derived",
+    "user-entered",
+    "calculated",
+    "imported",
+    "override",
+]
+
 DebtSource = Literal[
     "balance_sheet_aggregate",
     "instrument_schedule",
@@ -577,6 +585,14 @@ class ScenarioInput(ContractModel):
     maintenance_capex_pct_revenue: Decimal = Field(ge=0, le=1)
 
 
+class InputProvenance(ContractModel):
+    """Client-carried source labels for material case inputs."""
+
+    template_slug: str | None = None
+    fields: dict[str, ProvenanceSource] = Field(default_factory=dict)
+    acknowledged_template_inheritance: bool = False
+
+
 class CaseInput(ContractModel):
     slug: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$")
     borrower: BorrowerInput
@@ -594,6 +610,7 @@ class CaseInput(ContractModel):
     debt_instruments: list[DebtInstrumentInput] = Field(default_factory=list)
     scenarios: dict[Literal["base", "downside", "severe"], ScenarioInput]
     data_as_of: str
+    provenance: InputProvenance = Field(default_factory=InputProvenance)
 
     @model_validator(mode="after")
     def validate_scenarios(self) -> CaseInput:
@@ -1048,6 +1065,33 @@ class ReverseStressView(ContractModel):
     solvers: list[SolverResultView] = Field(default_factory=list)
 
 
+class ProvenanceSummaryView(ContractModel):
+    """Review-ready provenance counts carried into analysis and memo output."""
+
+    template_slug: str | None
+    counts: dict[ProvenanceSource, int]
+    percentages: dict[ProvenanceSource, str]
+    total_material_fields: int
+    inherited_percentage: str
+    unclassified_material_fields: list[str] = Field(default_factory=list)
+    acknowledgement_required: bool
+    warnings: list[str]
+
+
+class CompletionSummaryView(ContractModel):
+    """Evidence-based completion state; never derived from wizard step count."""
+
+    required_completed: int
+    required_total: int
+    required_missing: list[str]
+    evidence_completed: int
+    evidence_total: int
+    optional_completed: int
+    optional_total: int
+    warnings: list[str]
+    analysis_ready: bool
+
+
 class AnalysisResult(ContractModel):
     case: CaseInput
     policy_version: str
@@ -1058,6 +1102,8 @@ class AnalysisResult(ContractModel):
     metrics: dict[str, RatioView]
     financial_spreading: FinancialSpreadingView
     adjustments: AdjustmentSummaryView
+    provenance: "ProvenanceSummaryView"
+    completion: "CompletionSummaryView"
     rate_decision: "RateDecisionView | None" = None
     debt_reconciliation: "DebtReconciliationView | None" = None
     facility_mechanics: "ResolvedFacilityMechanics | None" = None

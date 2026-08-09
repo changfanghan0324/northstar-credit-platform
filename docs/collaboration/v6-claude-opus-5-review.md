@@ -225,3 +225,45 @@ Model: `claude-opus-5` (High effort; independent supplied-summary review)
 The challenge was a supplied-summary review and did not inspect the repository
 or production directly. Its verdict is paired with the executable local gate
 and the production smoke check recorded in the release status.
+
+## v6-07 — Provenance and evidence-based completion
+
+Date: 2026-08-08
+Model: `claude-opus-5` (High effort; independent supplied-summary review)
+
+### Initial challenge
+
+- Session: `821d7747-de3d-4591-9f12-522f635a91d1`
+- Verdict: **FAIL — release blocked pending fail-closed provenance and gate evidence**.
+- Findings: the initial evidence did not establish a closed runtime taxonomy,
+  exact 75% threshold boundaries, acknowledgement interaction semantics,
+  cross-surface parity, provenance revert behavior, or acknowledgement UI
+  coverage on the skipped viewport.
+
+### Codex response
+
+- Kept `ProvenanceSource` as a closed Pydantic `Literal`; unknown source values
+  now fail validation.
+- Added an explicit 20-field material registry, unclassified-field reporting for
+  non-demo cases, and a readiness block when any material path is unlabeled.
+- Added exact 75% and 70% boundary tests, acknowledged and unacknowledged paths,
+  and a non-demo compatibility case that proves missing labels cannot reach
+  `analysis_ready`.
+- Added analysis/validation/PDF parity assertions for 20 template-derived fields
+  and 100.00% inheritance, plus a desktop/mobile Review-page acknowledgement
+  interaction test.
+
+### Re-challenge
+
+- Session: `941f9c2e-e94a-4df7-9f03-48a307b23de1`
+- Verdict: **PASS — v6-07 approved pending final green verification gate**.
+- Claude found no blocking findings after remediation. Non-blocking follow-ups
+  were limited to future registry-drift guards, explicit skip documentation,
+  allowlist hardening, and an 80% boundary fixture.
+- Final verification after this challenge: 133 Python tests passed with 93.30%
+  coverage, strict Mypy/Ruff/format, TypeScript, ESLint, and Next build passed;
+  Playwright passed 13 tests with 1 intentional mobile skip.
+
+The challenge was a supplied-summary review and did not inspect the repository
+or production directly. Its verdict is paired with the executable local gate,
+production smoke, and browser check recorded in the release status.

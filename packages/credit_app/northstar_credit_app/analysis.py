@@ -42,6 +42,7 @@ from .models import (
     CapacityConstraintView,
     CapacityView,
     CaseInput,
+    CompletionSummaryView,
     CovenantView,
     DebtReconciliationView,
     DebtSource,
@@ -49,6 +50,8 @@ from .models import (
     FinancialInput,
     MoneyValue,
     PolicyCheckView,
+    ProvenanceSource,
+    ProvenanceSummaryView,
     RateDecisionView,
     RatioView,
     ResolvedFacilityMechanics,
@@ -77,6 +80,29 @@ BusinessRiskKey = Literal[
     "management_policy",
     "governance_event",
 ]
+
+MATERIAL_PROVENANCE_FIELDS = (
+    "borrower.legal_name",
+    "borrower.industry",
+    "borrower.headquarters",
+    "borrower.description",
+    "request.amount",
+    "request.purpose",
+    "request.facility_type",
+    "request.rate_type",
+    "request.maturity_years",
+    "financials.revenue",
+    "financials.ebit",
+    "financials.cfo",
+    "financials.cash_interest",
+    "financials.scheduled_principal",
+    "financials.long_term_debt",
+    "debt_instruments",
+    "business_risk.factor_evidence",
+    "scenarios.base",
+    "scenarios.downside",
+    "scenarios.severe",
+)
 
 
 def _money(value: MoneyValue) -> Money:
@@ -111,6 +137,151 @@ def _signed_adjustment_total(case: CaseInput, field: str) -> int:
         abs(getattr(item, field).amount_minor)
         * (1 if item.direction == "positive" else -1)
         for item in approved
+    )
+
+
+def _provenance_summary(case: CaseInput) -> ProvenanceSummaryView:
+    demo_slugs = {
+        "stable-manufacturer",
+        "cyclical-distributor",
+        "software-services",
+    }
+    supplied = case.provenance.fields
+    default_source: ProvenanceSource = (
+        "template-derived" if case.slug in demo_slugs else "user-entered"
+    )
+
+    def source_for(field: str) -> ProvenanceSource:
+        return supplied.get(field, default_source)
+
+    # Demo cases have an explicit compatibility migration: their known slug
+    # classifies omitted labels as template-derived. A non-demo template-backed
+    # case must carry a label for every material path; omitted labels remain
+    # visible and block readiness rather than silently disappearing.
+    unclassified = (
+        []
+        if case.slug in demo_slugs
+        else [field for field in MATERIAL_PROVENANCE_FIELDS if field not in supplied]
+    )
+
+    counts: dict[ProvenanceSource, int] = {
+        "template-derived": 0,
+        "user-entered": 0,
+        "calculated": 0,
+        "imported": 0,
+        "override": 0,
+    }
+    for field in MATERIAL_PROVENANCE_FIELDS:
+        counts[source_for(field)] += 1
+    total = len(MATERIAL_PROVENANCE_FIELDS)
+    percentages = {source: f"{counts[source] / total * 100:.2f}%" for source in counts}
+    inherited = percentages["template-derived"]
+    inherited_ratio = counts["template-derived"] / total
+    acknowledgement_required = (
+        case.provenance.template_slug is not None and inherited_ratio >= 0.75
+    )
+    warnings: list[str] = []
+    if (
+        acknowledgement_required
+        and not case.provenance.acknowledged_template_inheritance
+    ):
+        warnings.append(
+            "Template inheritance acknowledgment is required before memo generation."
+        )
+    if source_for("borrower.legal_name") == "user-entered" and inherited_ratio >= 0.75:
+        warnings.append(
+            "Borrower name changed while most material values remain template-derived."
+        )
+    if unclassified:
+        warnings.append(
+            "Material inputs missing provenance labels: "
+            + ", ".join(unclassified)
+            + "."
+        )
+    return ProvenanceSummaryView(
+        template_slug=case.provenance.template_slug,
+        counts=counts,
+        percentages=percentages,
+        total_material_fields=total,
+        inherited_percentage=inherited,
+        unclassified_material_fields=unclassified,
+        acknowledgement_required=acknowledgement_required,
+        warnings=warnings,
+    )
+
+
+def _completion_summary(
+    case: CaseInput,
+    scorecard: ScorecardView,
+    provenance: ProvenanceSummaryView,
+) -> CompletionSummaryView:
+    required = {
+        "borrower.legal_name": bool(case.borrower.legal_name.strip()),
+        "borrower.description": bool(case.borrower.description.strip()),
+        "request.amount": case.request.amount.amount_minor > 0,
+        "request.purpose": bool(case.request.purpose.strip()),
+        "request.annual_rate": case.request.annual_rate > 0,
+        "request.maturity_years": case.request.maturity_years > 0,
+        "financials.revenue": case.financials.revenue.amount_minor > 0,
+        "financials.cfo": case.financials.cfo.amount_minor != 0,
+        "financials.cash_interest": case.financials.cash_interest.amount_minor >= 0,
+        "financials.scheduled_principal": case.financials.scheduled_principal.amount_minor
+        >= 0,
+        "business_risk.strengths": bool(case.business_risk.strengths),
+        "business_risk.risks": bool(case.business_risk.risks),
+    }
+    evidence_fields = (
+        "industry",
+        "competitive_position",
+        "customer_concentration",
+        "diversification",
+        "management_policy",
+        "governance_event",
+    )
+
+    def evidence_complete(field: str) -> bool:
+        evidence = case.business_risk.factor_evidence.get(cast(BusinessRiskKey, field))
+        return bool(
+            evidence
+            and evidence.evidence.strip()
+            and evidence.source.strip()
+            and evidence.analyst_rationale.strip()
+        )
+
+    evidence_completed = sum(evidence_complete(field) for field in evidence_fields)
+    optional = {
+        "debt_instruments": bool(case.debt_instruments),
+        "financial_spread": bool(case.financial_spread.periods),
+        "borrowing_base": case.borrowing_base is not None,
+    }
+    missing = [key for key, complete in required.items() if not complete]
+    warnings = [*provenance.warnings]
+    if missing:
+        warnings.append(f"Required fields missing: {', '.join(missing)}.")
+    if evidence_completed < len(evidence_fields):
+        warnings.append(
+            f"Evidence completed: {evidence_completed}/{len(evidence_fields)} required risk factors."
+        )
+    analysis_ready = (
+        not missing
+        and evidence_completed == len(evidence_fields)
+        and scorecard.grade is not None
+        and not provenance.unclassified_material_fields
+        and (
+            not provenance.acknowledgement_required
+            or case.provenance.acknowledged_template_inheritance
+        )
+    )
+    return CompletionSummaryView(
+        required_completed=sum(required.values()),
+        required_total=len(required),
+        required_missing=missing,
+        evidence_completed=evidence_completed,
+        evidence_total=len(evidence_fields),
+        optional_completed=sum(optional.values()),
+        optional_total=len(optional),
+        warnings=warnings,
+        analysis_ready=analysis_ready,
     )
 
 
@@ -2076,6 +2247,7 @@ def analyze_case(
     case: CaseInput, *, calculated_at: datetime | None = None
 ) -> AnalysisResult:
     policy, policy_hash = load_policy()
+    provenance = _provenance_summary(case)
     resolution = resolve_underwriting_financials(case)
     debt_reconciliation = _reconcile_debt(case, resolution.financials)
     debt_blocked = debt_reconciliation.status == "blocked"
@@ -2243,6 +2415,7 @@ def analyze_case(
                 ],
             }
         )
+    completion = _completion_summary(case, scorecard, provenance)
     pricing = calculate_pricing(case, policy, scorecard, facility_mechanics)
     pricing_rate = (
         None
@@ -2541,6 +2714,19 @@ def analyze_case(
             "Synthetic demonstration - not a real data-quality assessment.",
             "Educational and illustrative only; not lending, investment, accounting, or legal advice.",
         ],
+        "data_provenance": [
+            f"Template: {provenance.template_slug or 'not declared'}; template-derived {provenance.inherited_percentage} of material inputs.",
+            "Source counts: "
+            + "; ".join(
+                f"{source} {provenance.counts[source]} ({provenance.percentages[source]})"
+                for source in provenance.counts
+            ),
+            *provenance.warnings,
+        ],
+        "completion_status": [
+            f"Required fields {completion.required_completed}/{completion.required_total}; evidence {completion.evidence_completed}/{completion.evidence_total}; optional sections {completion.optional_completed}/{completion.optional_total}; analysis-ready {completion.analysis_ready}.",
+            *completion.warnings,
+        ],
         "analyst_sign_off": [
             "Prepared by: ____________________",
             f"Data as of: {case.data_as_of}.",
@@ -2560,6 +2746,8 @@ def analyze_case(
         metrics={key: _ratio_view(value) for key, value in metrics_raw.items()},
         financial_spreading=financial_spreading,
         adjustments=adjustments,
+        provenance=provenance,
+        completion=completion,
         rate_decision=rate_decision,
         debt_reconciliation=debt_reconciliation,
         facility_mechanics=facility_mechanics,
