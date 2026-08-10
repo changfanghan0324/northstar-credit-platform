@@ -84,6 +84,7 @@ Strict Mypy、Strict TypeScript、ESLint、Next.js production build、Playwright
 ## 文件
 
 - [目前發布狀態](docs/release-status.md)
+- [Northstar v6.0.0 發布說明](docs/releases/northstar-v6.0.0.md)
 - [v6 修正前自我稽核](docs/audits/v6-pre-fix-audit.md)
 - [v6 修正後自我稽核](docs/audits/v6-post-fix-audit.md)
 - [方法論](docs/methodology.md)

@@ -98,6 +98,7 @@ and uses an embedded open-source Noto Sans TC font for Traditional Chinese.
 ## Documentation
 
 - [Current release status](docs/release-status.md)
+- [Northstar v6.0.0 release notes](docs/releases/northstar-v6.0.0.md)
 - [v6 pre-fix self-audit](docs/audits/v6-pre-fix-audit.md)
 - [v6 post-fix self-audit](docs/audits/v6-post-fix-audit.md)
 - [Methodology](docs/methodology.md)

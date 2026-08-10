@@ -1,6 +1,11 @@
 # Northstar current release status
 
-Status: **Portfolio Demo Mode release — v6 complete; final audit passed**
+Status: **Portfolio Demo Mode release — v6.0.0 formally frozen**
+
+Freeze date: 2026-08-09
+Release tag: `v6.0.0`
+Freeze policy: no feature, model, policy, or public-claim changes are included
+after this tag without a new release review.
 
 This is the single current release truth. Historical audits and debate logs remain in the repository for traceability but do not override this page.
 
@@ -13,7 +18,7 @@ production-verified.
 
 - v5 baseline release commit: `ea797c1b6d59934a1f7b8b8e6405c1aeac2aeae6`
 - Production URL: https://northstar-credit-platform.vercel.app
-- Vercel deployment: `dpl_HG6b9t5t4aJRxsPEzrgJcc6dtQ2k` (READY; production alias verified)
+- Vercel deployment: `dpl_4scrQ5hLioEdH7GqLywNPNrn3xf7` (READY; production alias verified)
 - Product mode: Portfolio Demo Mode (synthetic, anonymous, temporary seven-day cases)
 
 ## v6 phase progress
@@ -60,6 +65,15 @@ production-verified.
   findings. The production verification remains anchored to READY deployment
   `dpl_AadQpGe2ZVipaPo9Jjva84znAakA` because v6-08 changes are documentation and
   audit records only.
+
+## Formal freeze checklist
+
+- Eight phase commits are present on `main` and preserved as separate history.
+- `v6.0.0` is the immutable release tag for the audited repository state.
+- GitHub Release notes identify the exact model, test, Claude review, and
+  production evidence.
+- The public production alias is READY and remains in Portfolio Demo Mode.
+- Unrelated local user files remain untracked and were not included in the release.
 
 ## Verification at release authoring
 
